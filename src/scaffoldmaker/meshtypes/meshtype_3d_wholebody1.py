@@ -28,7 +28,6 @@ class MeshType_3d_wholebody1(Scaffold_base):
             'Number of elements around' : 4,
             'Number of elements along' : 1,
             'Number of elements through wall' : 1,
-            'Wall thickness' : 0.25,
             'Use cross derivatives' : False,
             'Refine' : False,
             'Refine number of elements around' : 1,
@@ -42,7 +41,6 @@ class MeshType_3d_wholebody1(Scaffold_base):
             'Number of elements around',
             'Number of elements along',
             'Number of elements through wall',
-            'Wall thickness',
             'Use cross derivatives',
             'Refine',
             'Refine number of elements around',
@@ -62,10 +60,6 @@ class MeshType_3d_wholebody1(Scaffold_base):
                 options[key] = 1
         if (options['Number of elements around'] < 2) :
             options['Number of elements around'] = 2
-        if (options['Wall thickness'] < 0.0) :
-            options['Wall thickness'] = 0.0
-        elif (options['Wall thickness'] > 0.5) :
-            options['Wall thickness'] = 0.5
 
 
     @staticmethod
@@ -79,7 +73,6 @@ class MeshType_3d_wholebody1(Scaffold_base):
         elementsCountAround = options['Number of elements around']
         elementsCountAlong = options['Number of elements along']
         elementsCountThroughWall = options['Number of elements through wall']
-        wallThickness = options['Wall thickness']
         useCrossDerivatives = options['Use cross derivatives']
 
         fm = region.getFieldmodule()
@@ -103,25 +96,41 @@ class MeshType_3d_wholebody1(Scaffold_base):
         mesh = fm.findMeshByDimension(3)
 
         tricubichermite = eftfactory_tricubichermite(mesh, useCrossDerivatives)
-        eft = tricubichermite.createEftBasic()
-
+        eft2 = tricubichermite.createEftBasic()
+        eft = tricubichermite.createEftWedgeRadial(0 * 100, 1* 100)
         elementtemplate = mesh.createElementtemplate()
         elementtemplate.setElementShapeType(Element.SHAPE_TYPE_CUBE)
         result = elementtemplate.defineField(coordinates, -1, eft)
+
+        elementtemplate2 = mesh.createElementtemplate()
+        elementtemplate2.setElementShapeType(Element.SHAPE_TYPE_CUBE)
+        result = elementtemplate2.defineField(coordinates, -1, eft2)
 
         cache = fm.createFieldcache()
 
         # create nodes
         nodeIdentifier = 1
         radiansPerElementAround = 2.0*math.pi/elementsCountAround
-        wallThicknessPerElement = wallThickness/elementsCountThroughWall
         x = [ 0.0, 0.0, 0.0 ]
-        dx_ds1 = [ 0.0, 0.0, 0.0 ]
+        dx_ds1 = [ 0.5/elementsCountThroughWall , 0.0, 0.0 ]
         dx_ds2 = [ 0.0, 0.0, 1.0 / elementsCountAlong ]
-        dx_ds3 = [ 0.0, 0.0, 0.0 ]
+        dx_ds3 = [ 0.0, 0.5/elementsCountThroughWall, 0.0 ]
         zero = [ 0.0, 0.0, 0.0 ]
-        for n3 in range(elementsCountThroughWall + 1):
-            radius = 0.5 + wallThickness*(n3/elementsCountThroughWall - 1.0)
+        radiansPerElementAround = 2.0*math.pi/elementsCountAround
+        wallThicknessPerElement = 0.5/elementsCountThroughWall
+
+        for n2 in range(elementsCountAlong+1):
+            x = [0.0, 0.0, n2 * 1.0 / elementsCountAlong]
+            node = nodes.createNode(nodeIdentifier, nodetemplate)
+            cache.setNode(node)
+            coordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_VALUE, 1, x)
+            coordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS1, 1, dx_ds1)
+            coordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS2, 1, dx_ds2)
+            coordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS3, 1, dx_ds3)
+            nodeIdentifier += 1
+
+        for n3 in range(elementsCountThroughWall):
+            radius = 0.5*((n3+1)/elementsCountThroughWall)
             for n2 in range(elementsCountAlong + 1):
                 x[2] = n2 / elementsCountAlong
                 for n1 in range(elementsCountAround):
@@ -153,15 +162,26 @@ class MeshType_3d_wholebody1(Scaffold_base):
         for e3 in range(elementsCountThroughWall):
             for e2 in range(elementsCountAlong):
                 for e1 in range(elementsCountAround):
-                    element = mesh.createElement(elementIdentifier, elementtemplate)
-                    bni11 = e3*now + e2*elementsCountAround + e1 + 1
-                    bni12 = e3*now + e2*elementsCountAround + (e1 + 1)%elementsCountAround + 1
-                    bni21 = e3*now + (e2 + 1)*elementsCountAround + e1 + 1
-                    bni22 = e3*now + (e2 + 1)*elementsCountAround + (e1 + 1)%elementsCountAround + 1
-                    nodeIdentifiers = [ bni11, bni12, bni21, bni22, bni11 + now, bni12 + now, bni21 + now, bni22 + now ]
-                    result = element.setNodesByIdentifier(eft, nodeIdentifiers)
-                    elementIdentifier = elementIdentifier + 1
-
+                    if e3 == 0:
+                        element = mesh.createElement(elementIdentifier, elementtemplate)
+                        bni1 = e2+1
+                        bni2 = elementsCountAlong+1+e1+1+e2*elementsCountAround
+                        bni3 = elementsCountAlong+1+(e1+1) % elementsCountAround+1+e2*elementsCountAround
+                        nodeIdentifiers = [ bni1, bni1+1, bni2, bni3, bni2+elementsCountAround, bni3+elementsCountAround ]
+                        result = element.setNodesByIdentifier(eft, nodeIdentifiers)
+                        elementIdentifier = elementIdentifier + 1
+                    else:
+                        element = mesh.createElement(elementIdentifier, elementtemplate2)
+                        bni11 = e3*now + e2*elementsCountAround + e1 + 1
+                        bni12 = e3*now + e2*elementsCountAround + (e1 + 1)%elementsCountAround + 1
+                        bni21 = e3*now + (e2 + 1)*elementsCountAround + e1 + 1
+                        bni22 = e3*now + (e2 + 1)*elementsCountAround + (e1 + 1)%elementsCountAround + 1
+                        # nodeIdentifiers = [ bni11, bni12, bni21, bni22, bni11 + now, bni12 + now, bni21 + now, bni22 + now ]
+                        bni1 = elementsCountAlong+1+1+e1+e2*elementsCountAround+(e3-1)*now
+                        bni2 = elementsCountAlong+1+1+(e1+1)%elementsCountAround+e2*elementsCountAround+(e3-1)*now
+                        nodeIdentifiers = [ bni1, bni2, bni1+elementsCountAround, bni2+elementsCountAround, bni1+now, bni2+now,bni1+elementsCountAround+now, bni2+elementsCountAround+now]
+                        result = element.setNodesByIdentifier(eft2, nodeIdentifiers)
+                        elementIdentifier = elementIdentifier + 1
         fm.endChange()
 
     @classmethod

@@ -26,6 +26,7 @@ from scaffoldmaker.meshtypes.meshtype_3d_heartventriclesbase2 import MeshType_3d
 from scaffoldmaker.meshtypes.meshtype_3d_lens1 import MeshType_3d_lens1
 from scaffoldmaker.meshtypes.meshtype_3d_ostium1 import MeshType_3d_ostium1
 from scaffoldmaker.meshtypes.meshtype_3d_smallintestine1 import MeshType_3d_smallintestine1
+from scaffoldmaker.meshtypes.meshtype_3d_solidcylinder1 import MeshType_3d_solidcylinder1
 from scaffoldmaker.meshtypes.meshtype_3d_solidsphere1 import MeshType_3d_solidsphere1
 from scaffoldmaker.meshtypes.meshtype_3d_sphereshell1 import MeshType_3d_sphereshell1
 from scaffoldmaker.meshtypes.meshtype_3d_sphereshellseptum1 import MeshType_3d_sphereshellseptum1
@@ -63,6 +64,7 @@ class Scaffolds(object):
             MeshType_3d_lens1,
             MeshType_3d_ostium1,
             MeshType_3d_smallintestine1,
+            MeshType_3d_solidcylinder1,
             MeshType_3d_solidsphere1,
             MeshType_3d_sphereshell1,
             MeshType_3d_sphereshellseptum1,

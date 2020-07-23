@@ -6,15 +6,17 @@ variable radius and thickness along.
 
 import copy
 import math
+from scaffoldmaker.annotation.annotationgroup import AnnotationGroup
+from scaffoldmaker.annotation.colon_terms import get_colon_term
 from scaffoldmaker.meshtypes.meshtype_1d_path1 import MeshType_1d_path1, extractPathParametersFromRegion
-from scaffoldmaker.meshtypes.meshtype_3d_colonsegment1 import ColonSegmentTubeMeshInnerPoints, getFullProfileFromHalfHaustrum
+from scaffoldmaker.meshtypes.meshtype_3d_colonsegment1 import ColonSegmentTubeMeshInnerPoints, \
+    getFullProfileFromHalfHaustrum, getTeniaColi, createNodesAndElementsTeniaColi
 from scaffoldmaker.meshtypes.meshtype_3d_ostium1 import MeshType_3d_ostium1, generateOstiumMesh
 from scaffoldmaker.meshtypes.scaffold_base import Scaffold_base
 from scaffoldmaker.scaffoldpackage import ScaffoldPackage
 from scaffoldmaker.utils.annulusmesh import createAnnulusMesh3d
 from scaffoldmaker.utils import interpolation as interp
 from scaffoldmaker.utils import matrix
-from scaffoldmaker.utils.meshrefinement import MeshRefinement
 from scaffoldmaker.utils.tracksurface import TrackSurface, TrackSurfacePosition
 from scaffoldmaker.utils import tubemesh
 from scaffoldmaker.utils import vector
@@ -321,7 +323,8 @@ class MeshType_3d_cecum1(Scaffold_base):
             cecumLength += arcLength
 
         # Sample central path
-        smoothd1 = interp.smoothCubicHermiteDerivativesLine(cx, cd1, magnitudeScalingMode = interp.DerivativeScalingMode.HARMONIC_MEAN)
+        smoothd1 = interp.smoothCubicHermiteDerivativesLine(cx, cd1,
+                                                            magnitudeScalingMode = interp.DerivativeScalingMode.HARMONIC_MEAN)
         sxCecum, sd1Cecum, se, sxi, ssf = interp.sampleCubicHermiteCurves(cx, smoothd1, elementsCountAlong)
         sd2Cecum, sd12Cecum = interp.interpolateSampleCubicHermite(cd2, cd12, se, sxi, ssf)
 
@@ -332,6 +335,8 @@ class MeshType_3d_cecum1(Scaffold_base):
         innerRadiusAlongCecum = []
         dInnerRadiusAlongCecum = []
         tcWidthAlongCecum = []
+
+        closedProximalEnd = True
 
         for n2 in range(elementsCountAlongSegment*segmentCount + 1):
             xi = 1/(elementsCountAlongSegment*segmentCount) * n2
@@ -346,6 +351,8 @@ class MeshType_3d_cecum1(Scaffold_base):
                                                      [endTCWidth], [endTCWidthDerivative], xi)[0]
             tcWidthAlongCecum.append(tcWidth)
 
+        haustrumInnerRadiusFactorAlongCecum = [haustrumInnerRadiusFactor] * (elementsCountAlong + 1)
+
         xToSample = []
         d1ToSample = []
         d2ToSample = []
@@ -356,12 +363,22 @@ class MeshType_3d_cecum1(Scaffold_base):
         colonSegmentTubeMeshInnerPoints = ColonSegmentTubeMeshInnerPoints(
             region, elementsCountAroundTC, elementsCountAroundHaustrum, elementsCountAlongSegment,
             tcCount, segmentLengthEndDerivativeFactor, segmentLengthMidDerivativeFactor,
-            segmentLength, wallThickness, cornerInnerRadiusFactor, haustrumInnerRadiusFactor,
+            segmentLength, wallThickness, cornerInnerRadiusFactor, haustrumInnerRadiusFactorAlongCecum,
             innerRadiusAlongCecum, dInnerRadiusAlongCecum, tcWidthAlongCecum, startPhase)
+
+        # Create annotation
+        cecumGroup = AnnotationGroup(region, get_colon_term("caecum"))
+        annotationGroupsAlong = []
+        for i in range(elementsCountAlong):
+            annotationGroupsAlong.append([cecumGroup])
+
+        annotationGroupsThroughWall = []
+        for i in range(elementsCountThroughWall):
+            annotationGroupsThroughWall.append([ ])
 
         for nSegment in range(segmentCount):
             # Make regular segments
-            xInner, d1Inner, d2Inner, transitElementList, segmentAxis, annotationGroups, annotationArray \
+            xInner, d1Inner, d2Inner, transitElementList, segmentAxis, annotationGroupsAround \
                 = colonSegmentTubeMeshInnerPoints.getColonSegmentTubeMeshInnerPoints(nSegment)
 
             # Replace first half of first segment with apex and sample along apex and second half of segment
@@ -387,6 +404,16 @@ class MeshType_3d_cecum1(Scaffold_base):
                                                              elementsCountAroundHalfHaustrum, elementsCountAroundTC,
                                                              elementsCountAround, elementsCountAlong, tcCount)
 
+        # Ensure cecum starts at z = 0.0
+        minZ = xToWarp[0][2]
+        for n2 in range(elementsCountAlong + 1):
+            zFirstNodeAlong = xToWarp[n2 * elementsCountAround][2]
+            if zFirstNodeAlong < minZ:
+                minZ = zFirstNodeAlong
+
+        for n in range(len(xToWarp)):
+            xToWarp[n][2] = xToWarp[n][2] - minZ
+
         # Project reference point for warping onto central path
         sxRefList, sd1RefList, sd2ProjectedListRef, zRefList = \
             tubemesh.getPlaneProjectionOnCentralPath(xToWarp, elementsCountAround, elementsCountAlong,
@@ -396,30 +423,25 @@ class MeshType_3d_cecum1(Scaffold_base):
         xWarpedList, d1WarpedList, d2WarpedList, d3WarpedUnitList = \
             tubemesh.warpSegmentPoints(xToWarp, d1ToWarp, d2ToWarp, segmentAxis, sxRefList, sd1RefList,
                                        sd2ProjectedListRef, elementsCountAround, elementsCountAlong,
-                                       zRefList, innerRadiusAlongCecum, closedProximalEnd=True)
-
-        # Calculate unit d3
-        d3UnitWarpedList = []
-        for n in range(len(xWarpedList)):
-            d3Unit = vector.normalise(
-                vector.crossproduct3(vector.normalise(d1WarpedList[n]), vector.normalise(d2WarpedList[n])))
-            d3UnitWarpedList.append(d3Unit)
+                                       zRefList, innerRadiusAlongCecum, closedProximalEnd)
 
         # Create coordinates and derivatives
         wallThicknessList = [wallThickness] * (elementsCountAlong + 1)
 
         xList, d1List, d2List, d3List, curvatureList = tubemesh.getCoordinatesFromInner(xWarpedList, d1WarpedList,
-            d2WarpedList, d3UnitWarpedList, wallThicknessList,
+            d2WarpedList, d3WarpedUnitList, wallThicknessList,
             elementsCountAround, elementsCountAlong, elementsCountThroughWall, transitElementList)
 
         # Deal with multiple nodes at end point for closed proximal end
         xApexInner = xList[0]
         # arclength between apex point and corresponding point on next face
-        mag = interp.getCubicHermiteArcLength(xList[0], d2List[0], xList[elementsCountAround*2], d2List[elementsCountAround*2])
+        mag = interp.getCubicHermiteArcLength(xList[0], d2List[0], xList[elementsCountAround*2],
+                                              d2List[elementsCountAround*2])
         d2ApexInner = vector.setMagnitude(sd2Cecum[0], mag)
         d1ApexInner = vector.crossproduct3(sd1Cecum[0], d2ApexInner)
         d1ApexInner = vector.setMagnitude(d1ApexInner, mag)
-        d3ApexUnit = vector.normalise(vector.crossproduct3(vector.normalise(d1ApexInner), vector.normalise(d2ApexInner)))
+        d3ApexUnit = vector.normalise(vector.crossproduct3(vector.normalise(d1ApexInner),
+                                                           vector.normalise(d2ApexInner)))
         d3ApexInner = [d3ApexUnit[c] * wallThickness/elementsCountThroughWall for c in range(3)]
 
         xCecum = []
@@ -443,11 +465,27 @@ class MeshType_3d_cecum1(Scaffold_base):
         xTexture = d1Texture = d2Texture = d3Texture = []
 
         # Create nodes and elements
-        nextNodeIdentifier, nextElementIdentifier, annotationGroups = tubemesh.createNodesAndElements(
-            region, xCecum, d1Cecum, d2Cecum, d3Cecum, xFlat, d1Flat, d2Flat, xTexture, d1Texture, d2Texture,
-            elementsCountAround, elementsCountAlong, elementsCountThroughWall,
-            annotationGroups, annotationArray, firstNodeIdentifier, firstElementIdentifier,
-            useCubicHermiteThroughWall, useCrossDerivatives, closedProximalEnd=True)
+        if tcThickness > 0:
+            tubeTCWidthList = colonSegmentTubeMeshInnerPoints.getTubeTCWidthList()
+            xCecum, d1Cecum, d2Cecum, d3Cecum, annotationGroupsAround = getTeniaColi(
+                region, xCecum, d1Cecum, d2Cecum, d3Cecum, curvatureList, tcCount, elementsCountAroundTC,
+                elementsCountAroundHaustrum, elementsCountAlong, elementsCountThroughWall,
+                tubeTCWidthList, tcThickness, sxRefList, annotationGroupsAround, closedProximalEnd)
+
+            nextNodeIdentifier, nextElementIdentifier, annotationGroups = createNodesAndElementsTeniaColi(
+                    region, xCecum, d1Cecum, d2Cecum, d3Cecum, xFlat, d1Flat, d2Flat, xTexture, d1Texture, d2Texture,
+                    elementsCountAroundTC, elementsCountAroundHaustrum, elementsCountAlong, elementsCountThroughWall,
+                    tcCount, annotationGroupsAround, annotationGroupsAlong, annotationGroupsThroughWall,
+                    firstNodeIdentifier, firstElementIdentifier, useCubicHermiteThroughWall, useCrossDerivatives,
+                    closedProximalEnd)
+
+        else:
+            nextNodeIdentifier, nextElementIdentifier, annotationGroups = tubemesh.createNodesAndElements(
+                region, xCecum, d1Cecum, d2Cecum, d3Cecum, xFlat, d1Flat, d2Flat, xTexture, d1Texture, d2Texture,
+                elementsCountAround, elementsCountAlong, elementsCountThroughWall,
+                annotationGroupsAround, annotationGroupsAlong, annotationGroupsThroughWall,
+                firstNodeIdentifier, firstElementIdentifier, useCubicHermiteThroughWall, useCrossDerivatives,
+                closedProximalEnd)
 
         # Add ostium on track surface between two tenia on the last segment
         elementsAroundTrackSurface = elementsCountAroundHaustrum
@@ -458,14 +496,17 @@ class MeshType_3d_cecum1(Scaffold_base):
         startIdxElementsAround = int((elementsCountAroundHaustrum + elementsCountAroundTC)*sectorIdx +
                                      elementsCountAroundTC*0.5)
         baseNodesIdx = (elementsCountThroughWall + 1) + \
-                       + elementsCountAround * (elementsCountThroughWall + 1) * (elementsCountAlongSegment * (segmentCount - 1) - 1) \
-                       + elementsCountAround
+                       + (elementsCountAround * (elementsCountThroughWall + 1) +
+                          ((elementsCountAroundTC - 1)*tcCount if tcThickness > 0.0 else 0)) * \
+                       (elementsCountAlongSegment * (segmentCount - 1) - 1) + elementsCountAround
         xTrackSurface = []
         d1TrackSurface = []
         d2TrackSurface = []
         for n2 in range(elementsCountAlongSegment + 1):
             for n1 in range(elementsCountAroundHaustrum + 1):
-                idx = baseNodesIdx + elementsCountAround * (elementsCountThroughWall + 1) * n2 + \
+                idx = baseNodesIdx + \
+                      (elementsCountAround * (elementsCountThroughWall + 1) +
+                       ((elementsCountAroundTC - 1)*tcCount if tcThickness > 0.0 else 0)) * n2 + \
                       startIdxElementsAround + n1
                 xTrackSurface.append(xCecum[idx])
                 d1TrackSurface.append(d1Cecum[idx])
@@ -524,20 +565,26 @@ class MeshType_3d_cecum1(Scaffold_base):
                 ei2Bottom >= 0 and ei2Top < elementsAlongTrackSurface), \
             'cecum1.py: Insufficient elements around ostium on tracksurface to make annulus mesh.'
 
-        nodeStart = int(baseNodesIdx + elementsCountAround * (elementsCountThroughWall + 1) * ei2Bottom + ei1Centre +
+        nodeStart = int(baseNodesIdx + ei2Bottom * (elementsCountAround * (elementsCountThroughWall + 1) + \
+                        ((elementsCountAroundTC - 1)*tcCount if tcThickness > 0.0 else 0)) + ei1Centre + \
                         sectorIdx*(elementsCountAroundHaustrum + elementsCountAroundTC) + elementsCountAroundTC*0.5) - \
                         elementsCountAround + 1 # only for 1 layer through wall
 
         # Store elements and nodes to be deleted later from tracked surface
         deleteElementsCountAcross = ei1Right - ei1Left + 1
         deleteElementsCountAlong = ei2Top - ei2Bottom + 1
-        deleteElementIdxStart = int(elementsCountAround * (elementsCountAlong - elementsCountAlongSegment + ei2Bottom)
-                                    *elementsCountThroughWall + elementsCountAroundTC*0.5 +
-                                    (elementsCountAroundTC + elementsCountAroundHaustrum)*sectorIdx + ei1Left + 1)
+        deleteElementIdxStart = int((elementsCountAround * elementsCountThroughWall +
+                                     (elementsCountAroundTC * tcCount if tcThickness > 0.0 else 0.0)) *
+                                    (elementsCountAlong - elementsCountAlongSegment + ei2Bottom) +
+                                    elementsCountAroundTC * 0.5 +
+                                    (elementsCountAroundTC + elementsCountAroundHaustrum) * sectorIdx + ei1Left + 1)
+
         deleteElementIdentifier = []
         for n2 in range(deleteElementsCountAlong):
             for n1 in range(deleteElementsCountAcross):
-                elementIdx = deleteElementIdxStart + n1 + elementsCountAround*n2
+                elementIdx = deleteElementIdxStart + n1 + n2 * (elementsCountAround +
+                                                                (int(elementsCountAroundTC * tcCount)
+                                                                 if tcThickness > 0.0 else 0))
                 deleteElementIdentifier.append(elementIdx)
 
         deleteNodeIdxStart = nodeStart - int(deleteElementsCountAcross * 0.5)
@@ -545,8 +592,9 @@ class MeshType_3d_cecum1(Scaffold_base):
         for n2 in range(deleteElementsCountAlong + 1):
             for n3 in range(elementsCountThroughWall + 1):
                 for n1 in range(deleteElementsCountAcross + 1):
-                    nodeIdx = deleteNodeIdxStart + n1 + elementsCountAround*n3 + \
-                              elementsCountAround*(elementsCountThroughWall+1)*n2
+                    nodeIdx = deleteNodeIdxStart + n1 + elementsCountAround * n3 + \
+                              n2 * (elementsCountAround * (elementsCountThroughWall + 1) +
+                                    ((elementsCountAroundTC - 1) * tcCount if tcThickness > 0.0 else 0))
                     deleteNodeIdentifier.append(nodeIdx)
 
         innerEndPoints_Id = []
@@ -556,7 +604,7 @@ class MeshType_3d_cecum1(Scaffold_base):
             innerEndPoints_Id.append(idx)
             endProportions.append([(ei1Centre - n1)/elementsAroundTrackSurface, ei2Bottom/elementsAlongTrackSurface])
         for n2 in range(ei2Top - ei2Bottom + 1):
-            idx = idx + 2*elementsCountAround
+            idx = idx + 2 * elementsCountAround + ((elementsCountAroundTC - 1) * tcCount if tcThickness > 0.0 else 0)
             innerEndPoints_Id.append(idx)
             endProportions.append([ei1Left/elementsAroundTrackSurface, (ei2Bottom + n2 + 1)/elementsAlongTrackSurface])
         for n1 in range(1, ei1Right - ei1Left + 2):
@@ -564,7 +612,7 @@ class MeshType_3d_cecum1(Scaffold_base):
             innerEndPoints_Id.append(idx)
             endProportions.append([(ei1Left + n1) / elementsAroundTrackSurface, (ei2Top+1) / elementsAlongTrackSurface])
         for n2 in range(ei2Top - ei2Bottom + 1):
-            idx = idx - 2*elementsCountAround
+            idx = idx - 2 * elementsCountAround - ((elementsCountAroundTC - 1) * tcCount if tcThickness > 0.0 else 0)
             innerEndPoints_Id.append(idx)
             endProportions.append(
                 [(ei1Right+1) / elementsAroundTrackSurface, (ei2Top - n2) / elementsAlongTrackSurface])
@@ -628,13 +676,15 @@ class MeshType_3d_cecum1(Scaffold_base):
 
         ostiumSettings['Number of elements around ostium'] = len(innerEndPoints_Id)
 
-        nextNodeIdentifier, nextElementIdentifier, (o1_x, o1_d1, o1_d2, o1_d3, o1_NodeId, o1_Positions) = \
-            generateOstiumMesh(region, ostiumSettings, trackSurfaceOstium, centrePosition, axis1,
-                               nextNodeIdentifier, nextElementIdentifier)
-
         fm = region.getFieldmodule()
         mesh = fm.findMeshByDimension(3)
         nodes = fm.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_NODES)
+
+        cecumMeshGroup = cecumGroup.getMeshGroup(mesh)
+
+        nextNodeIdentifier, nextElementIdentifier, (o1_x, o1_d1, o1_d2, o1_d3, o1_NodeId, o1_Positions) = \
+            generateOstiumMesh(region, ostiumSettings, trackSurfaceOstium, centrePosition, axis1,
+                               nextNodeIdentifier, nextElementIdentifier, ostiumMeshGroups= [cecumMeshGroup] )
 
         startProportions = []
         for n in range(len(innerEndPoints_Id)):
@@ -644,8 +694,8 @@ class MeshType_3d_cecum1(Scaffold_base):
             nodes, mesh, nextNodeIdentifier, nextElementIdentifier,
             o1_x, o1_d1, o1_d2, None, o1_NodeId, None,
             endPoints_x, endPoints_d1, endPoints_d2, None, endPoints_Id, endDerivativesMap,
-            elementsCountRadial = 2, tracksurface = trackSurfaceOstium, startProportions = startProportions,
-            endProportions = endProportions)
+            elementsCountRadial = 2, meshGroups = [cecumMeshGroup], tracksurface = trackSurfaceOstium,
+            startProportions = startProportions, endProportions = endProportions)
 
         # Delete elements under annulus mesh
         deleteElementsAndNodesUnderAnnulusMesh(fm, nodes, mesh, deleteElementIdentifier, deleteNodeIdentifier)
@@ -691,12 +741,13 @@ def getApexSegmentForCecum(xInner, d1Inner, d2Inner, elementsCountAroundHalfHaus
     # Compile nodes and d2 for sampling
     xFirstSegment += xInner[elementsCountAround * int(elementsCountAlongSegment * 0.5):] # second half of first regular segment
     d1FirstDirectionVector = vector.normalise(d1Inner[elementsCountAround]) # Store direction vector of first d1 intra-haustral for later
-    d2Vector = xInner[elementsCountAround*int(elementsCountAlongSegment*0.5):elementsCountAround*(int(elementsCountAlongSegment*0.5)+1)] # half face of segment - apex
+    d2Vector = xInner[elementsCountAround * int(elementsCountAlongSegment * 0.5):
+                      elementsCountAround * (int(elementsCountAlongSegment * 0.5) + 1)] # half face of segment - apex
     d2FirstSegment = []
     for c in range(elementsCountAround):
         d2 = [d2Vector[c][0], d2Vector[c][1], 0.0 ]  # project onto x-y plane to get d2 pointing vertically
         d2FirstSegment.append(d2)
-    d2FirstSegment += d2Inner[elementsCountAround*int(elementsCountAlongSegment*0.5):]
+    d2FirstSegment += d2Inner[elementsCountAround * int(elementsCountAlongSegment*0.5):]
 
     # Sample along first segment
     xFirstSegmentSampledRaw = []
@@ -708,8 +759,8 @@ def getApexSegmentForCecum(xInner, d1Inner, d2Inner, elementsCountAroundHalfHaus
     for n1 in range(elementsCountAround):
         xForSamplingAlong = []
         d2ForSamplingAlong = []
-        for n2 in range(1 + elementsCountAlongSegment - int(elementsCountAlongSegment*0.5) + 1):
-            idx = elementsCountAround*n2 + n1
+        for n2 in range(1 + elementsCountAlongSegment - int(elementsCountAlongSegment * 0.5) + 1):
+            idx = elementsCountAround * n2 + n1
             xForSamplingAlong.append(xFirstSegment[idx])
             d2ForSamplingAlong.append(d2FirstSegment[idx])
         xResampled, d1Resampled, se, sxi, _ = interp.sampleCubicHermiteCurves(xForSamplingAlong, d2ForSamplingAlong,

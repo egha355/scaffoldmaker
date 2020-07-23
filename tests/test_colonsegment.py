@@ -56,19 +56,19 @@ class ColonSegmentScaffoldTestCase(unittest.TestCase):
         coordinates = fieldmodule.findFieldByName("coordinates").castFiniteElement()
         self.assertTrue(coordinates.isValid())
         minimums, maximums = evaluateFieldNodesetRange(coordinates, nodes)
-        assertAlmostEqualList(self, minimums, [ -2.172286248499807e-15, -58.968781863998764, -55.55863337757897 ], 1.0E-6)
-        assertAlmostEqualList(self, maximums, [ 50.0, 50.530737937403266, 55.55863271778078 ], 1.0E-6)
+        assertAlmostEqualList(self, minimums, [ -2.172286248499807e-15, -58.95670186936737, -55.54662267827035 ], 1.0E-6)
+        assertAlmostEqualList(self, maximums, [ 50.0, 50.52621132610023, 55.54662267827035 ], 1.0E-6)
 
         flatCoordinates = fieldmodule.findFieldByName("flat coordinates").castFiniteElement()
         self.assertTrue(flatCoordinates.isValid())
         minimums, maximums = evaluateFieldNodesetRange(flatCoordinates, nodes)
         assertAlmostEqualList(self, minimums, [ 0.0, 0.0, 0.0 ], 1.0E-6)
-        assertAlmostEqualList(self, maximums, [397.26513766571264, 50.0, 3.2000000000000006], 1.0E-6)
+        assertAlmostEqualList(self, maximums, [397.2736607240895, 50.0, 3.2000000000000006], 1.0E-6)
 
         textureCoordinates = fieldmodule.findFieldByName("texture coordinates").castFiniteElement()
         minimums, maximums = evaluateFieldNodesetRange(textureCoordinates, nodes)
         assertAlmostEqualList(self, minimums, [ 0.0, 0.0, 0.0 ], 1.0E-6)
-        assertAlmostEqualList(self, maximums, [ 0.9887754554800083, 1.0, 2.0 ], 1.0E-6)
+        assertAlmostEqualList(self, maximums, [ 0.9887737064410717, 1.0, 2.0 ], 1.0E-6)
 
         with ChangeManager(fieldmodule):
             one = fieldmodule.createFieldConstant(1.0)
@@ -80,10 +80,10 @@ class ColonSegmentScaffoldTestCase(unittest.TestCase):
         fieldcache = fieldmodule.createFieldcache()
         result, surfaceArea = surfaceAreaField.evaluateReal(fieldcache, 1)
         self.assertEqual(result, RESULT_OK)
-        self.assertAlmostEqual(surfaceArea, 21129.468489217154, delta=1.0E-6)
+        self.assertAlmostEqual(surfaceArea, 21129.564192298032, delta=1.0E-6)
         result, volume = volumeField.evaluateReal(fieldcache, 1)
         self.assertEqual(result, RESULT_OK)
-        self.assertAlmostEqual(volume, 40798.571166705246, delta=1.0E-6)
+        self.assertAlmostEqual(volume, 40783.41115796618, delta=1.0E-6)
 
     def test_mousecolonsegment1(self):
         """

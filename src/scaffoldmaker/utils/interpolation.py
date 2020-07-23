@@ -12,6 +12,16 @@ from scaffoldmaker.utils import vector
 gaussXi3 = ( (-math.sqrt(0.6)+1.0)/2.0, 0.5, (+math.sqrt(0.6)+1.0)/2.0 )
 gaussWt3 = ( 5.0/18.0, 4.0/9.0, 5.0/18.0 )
 
+gaussXi4 = (
+    (-math.sqrt((3.0+2.0*math.sqrt(6.0/5.0))/7.0)+1.0)/2.0,
+    (-math.sqrt((3.0-2.0*math.sqrt(6.0/5.0))/7.0)+1.0)/2.0,
+    (+math.sqrt((3.0-2.0*math.sqrt(6.0/5.0))/7.0)+1.0)/2.0,
+    (+math.sqrt((3.0+2.0*math.sqrt(6.0/5.0))/7.0)+1.0)/2.0 )
+gaussWt4 = (
+    (18.0-math.sqrt(30.0))/72.0,
+    (18.0+math.sqrt(30.0))/72.0,
+    (18.0+math.sqrt(30.0))/72.0,
+    (18.0-math.sqrt(30.0))/72.0 )
 
 def getCubicHermiteBasis(xi):
     """
@@ -134,9 +144,9 @@ def getCubicHermiteArcLength(v1, d1, v2, d2):
     :return: Arc length of cubic curve using 3 point Gaussian quadrature.
     '''
     arcLength = 0.0
-    for i in range(3):
-        dm = interpolateCubicHermiteDerivative(v1, d1, v2, d2, gaussXi3[i])
-        arcLength += gaussWt3[i]*math.sqrt(sum(d*d for d in dm))
+    for i in range(4):
+        dm = interpolateCubicHermiteDerivative(v1, d1, v2, d2, gaussXi4[i])
+        arcLength += gaussWt4[i]*math.sqrt(sum(d*d for d in dm))
     return arcLength
 
 def getCubicHermiteArcLengthToXi(v1, d1, v2, d2, xi):

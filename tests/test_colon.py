@@ -90,7 +90,7 @@ class ColonScaffoldTestCase(unittest.TestCase):
         del tmpRegion
 
         annotationGroups = MeshType_3d_colon1.generateBaseMesh(region, options)
-        self.assertEqual(3, len(annotationGroups))
+        self.assertEqual(7, len(annotationGroups))
 
         fieldmodule = region.getFieldmodule()
         self.assertEqual(RESULT_OK, fieldmodule.defineAllFaces())
@@ -111,19 +111,19 @@ class ColonScaffoldTestCase(unittest.TestCase):
         coordinates = fieldmodule.findFieldByName("coordinates").castFiniteElement()
         self.assertTrue(coordinates.isValid())
         minimums, maximums = evaluateFieldNodesetRange(coordinates, nodes)
-        assertAlmostEqualList(self, minimums, [ 108.02987286771165, -36.87608293131954,  -25.895888349581547 ], 1.0E-6)
-        assertAlmostEqualList(self, maximums, [ 185.46718104326646, 48.09991198615451, 34.995273914410724 ], 1.0E-6)
+        assertAlmostEqualList(self, minimums, [ 108.0250647983898, -36.876103983560014,  -25.89741158325083 ], 1.0E-6)
+        assertAlmostEqualList(self, maximums, [ 185.46457506220003, 48.101157490744, 34.995316052158934 ], 1.0E-6)
 
         flatCoordinates = fieldmodule.findFieldByName("flat coordinates").castFiniteElement()
         self.assertTrue(flatCoordinates.isValid())
         minimums, maximums = evaluateFieldNodesetRange(flatCoordinates, nodes)
         assertAlmostEqualList(self, minimums, [ 0.0, 0.0, 0.0 ], 1.0E-6)
-        assertAlmostEqualList(self, maximums, [ 186.72664370397405, 77.41890571041102, 3.2000000000000006 ], 1.0E-6)
+        assertAlmostEqualList(self, maximums, [ 186.72988844629867, 77.4178187926561, 3.2000000000000006 ], 1.0E-6)
 
         textureCoordinates = fieldmodule.findFieldByName("texture coordinates").castFiniteElement()
         minimums, maximums = evaluateFieldNodesetRange(textureCoordinates, nodes)
         assertAlmostEqualList(self, minimums, [ 0.0, 0.0, 0.0 ], 1.0E-6)
-        assertAlmostEqualList(self, maximums, [ 0.9812487204616481, 1.0, 2.0 ], 1.0E-6)
+        assertAlmostEqualList(self, maximums, [ 0.9812471574796385, 1.0, 2.0 ], 1.0E-6)
 
         with ChangeManager(fieldmodule):
             one = fieldmodule.createFieldConstant(1.0)
@@ -135,10 +135,10 @@ class ColonScaffoldTestCase(unittest.TestCase):
         fieldcache = fieldmodule.createFieldcache()
         result, surfaceArea = surfaceAreaField.evaluateReal(fieldcache, 1)
         self.assertEqual(result, RESULT_OK)
-        self.assertAlmostEqual(surfaceArea, 14611.497578350145, delta=1.0E-6)
+        self.assertAlmostEqual(surfaceArea, 14612.416788520026, delta=1.0E-6)
         result, volume = volumeField.evaluateReal(fieldcache, 1)
         self.assertEqual(result, RESULT_OK)
-        self.assertAlmostEqual(volume, 26827.808239762675, delta=1.0E-6)
+        self.assertAlmostEqual(volume, 26826.069540921028, delta=1.0E-6)
 
     def test_mousecolon1(self):
         """
@@ -149,7 +149,7 @@ class ColonScaffoldTestCase(unittest.TestCase):
         region = context.getDefaultRegion()
         self.assertTrue(region.isValid())
         annotationGroups = MeshType_3d_colon1.generateBaseMesh(region, options)
-        self.assertEqual(2, len(annotationGroups))
+        self.assertEqual(6, len(annotationGroups))
 
         fieldmodule = region.getFieldmodule()
         self.assertEqual(RESULT_OK, fieldmodule.defineAllFaces())
@@ -174,7 +174,7 @@ class ColonScaffoldTestCase(unittest.TestCase):
         fieldcache = fieldmodule.createFieldcache()
         result, flatSurfaceArea = flatSurfaceAreaField.evaluateReal(fieldcache, 1)
         self.assertEqual(result, RESULT_OK)
-        self.assertAlmostEqual(flatSurfaceArea, 641.8998709292947, delta=1.0E-6)
+        self.assertAlmostEqual(flatSurfaceArea, 652.2383326727861, delta=1.0E-6)
         result, textureSurfaceArea = textureSurfaceAreaField.evaluateReal(fieldcache, 1)
         self.assertEqual(result, RESULT_OK)
         self.assertAlmostEqual(textureSurfaceArea, 1.0, delta=1.0E-6)

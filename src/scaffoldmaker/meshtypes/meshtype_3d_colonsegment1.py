@@ -11,14 +11,13 @@ from opencmiss.utils.zinc.field import findOrCreateFieldCoordinates, findOrCreat
 from opencmiss.zinc.element import Element
 from opencmiss.zinc.field import Field
 from opencmiss.zinc.node import Node
-from scaffoldmaker.annotation.annotationgroup import AnnotationGroup
+from scaffoldmaker.annotation.annotationgroup import AnnotationGroup, mergeAnnotationGroups
 from scaffoldmaker.annotation.colon_terms import get_colon_term
 from scaffoldmaker.meshtypes.scaffold_base import Scaffold_base
 from scaffoldmaker.utils.eftfactory_bicubichermitelinear import eftfactory_bicubichermitelinear
 from scaffoldmaker.utils.eftfactory_tricubichermite import eftfactory_tricubichermite
 from scaffoldmaker.utils.geometry import createCirclePoints
 from scaffoldmaker.utils import matrix
-from scaffoldmaker.utils.meshrefinement import MeshRefinement
 from scaffoldmaker.utils import interpolation as interp
 from scaffoldmaker.utils import tubemesh
 from scaffoldmaker.utils import vector
@@ -95,7 +94,7 @@ class MeshType_3d_colonsegment1(Scaffold_base):
             options['Start inner radius'] = 20.0
             options['End inner radius'] = 20.0
             options['Corner inner radius factor'] = 0.0
-            options['Haustrum inner radius factor'] = 0.3
+            options['Haustrum inner radius factor'] = 0.2
             options['Segment length end derivative factor'] = 0.8
             options['Segment length mid derivative factor'] = 2.0
             options['Segment length'] = 25.0
@@ -253,16 +252,33 @@ class MeshType_3d_colonsegment1(Scaffold_base):
                                                      [endTCWidth], [endTCWidthDerivative], xi)[0]
             tcWidthAlongSegment.append(tcWidth)
 
+        haustrumInnerRadiusFactorAlongSegment = [haustrumInnerRadiusFactor]*(elementsCountAlongSegment + 1)
+
         colonSegmentTubeMeshInnerPoints = ColonSegmentTubeMeshInnerPoints(
             region, elementsCountAroundTC, elementsCountAroundHaustrum, elementsCountAlongSegment,
             tcCount, segmentLengthEndDerivativeFactor, segmentLengthMidDerivativeFactor,
-            segmentLength, wallThickness, cornerInnerRadiusFactor, haustrumInnerRadiusFactor,
+            segmentLength, wallThickness, cornerInnerRadiusFactor, haustrumInnerRadiusFactorAlongSegment,
             radiusAlongSegment, dRadiusAlongSegment, tcWidthAlongSegment, startPhase)
+
+        # Create annotation
+        annotationGroupsAlong = []
+        for i in range(elementsCountAlongSegment):
+            annotationGroupsAlong.append([ ])
+
+        # serosaGroup = AnnotationGroup(region, get_colon_term("serosa of colon"))
+        # submucosaGroup = AnnotationGroup(region, get_colon_term("submucosa of colon"))
+        # mucosaGroup = AnnotationGroup(region, get_colon_term("colonic mucosa"))
+        # annotationGroupsThroughWall = [[mucosaGroup], [submucosaGroup], [serosaGroup]]
+
+        annotationGroupsThroughWall = []
+        for i in range(elementsCountThroughWall):
+            annotationGroupsThroughWall.append([ ])
 
         # Create inner points
         nSegment = 0
+        closedProximalEnd = False
 
-        xInner, d1Inner, d2Inner, transitElementList, segmentAxis, annotationGroups, annotationArray = \
+        xInner, d1Inner, d2Inner, transitElementList, segmentAxis, annotationGroupsAround = \
             colonSegmentTubeMeshInnerPoints.getColonSegmentTubeMeshInnerPoints(nSegment)
 
         # Project reference point for warping onto central path
@@ -274,7 +290,7 @@ class MeshType_3d_colonsegment1(Scaffold_base):
         xWarpedList, d1WarpedList, d2WarpedList, d3WarpedUnitList = tubemesh.warpSegmentPoints(
             xInner, d1Inner, d2Inner, segmentAxis, sxRefList, sd1RefList, sd2ProjectedListRef,
             elementsCountAround, elementsCountAlongSegment, zRefList, radiusAlongSegment,
-            closedProximalEnd=False)
+            closedProximalEnd)
 
         contractedWallThicknessList = colonSegmentTubeMeshInnerPoints.getContractedWallThicknessList()
 
@@ -287,23 +303,24 @@ class MeshType_3d_colonsegment1(Scaffold_base):
 
         if tcThickness > 0:
             tubeTCWidthList = colonSegmentTubeMeshInnerPoints.getTubeTCWidthList()
-            xList, d1List, d2List, d3List, annotationGroups, annotationArray = getTeniaColi(
+            xList, d1List, d2List, d3List, annotationGroupsAround = getTeniaColi(
                 region, xList, d1List, d2List, d3List, curvatureList, tcCount, elementsCountAroundTC,
                 elementsCountAroundHaustrum, elementsCountAlongSegment, elementsCountThroughWall,
-                tubeTCWidthList, tcThickness, sxRefList, annotationGroups, annotationArray)
+                tubeTCWidthList, tcThickness, sxRefList, annotationGroupsAround, closedProximalEnd)
 
             # Create flat and texture coordinates
             xFlat, d1Flat, d2Flat, xTexture, d1Texture, d2Texture = createFlatAndTextureCoordinatesTeniaColi(
                 xiList, relaxedLengthList, segmentLength, wallThickness, tcCount, tcThickness,
                 elementsCountAroundTC, elementsCountAroundHaustrum, elementsCountAlongSegment,
-                elementsCountThroughWall, transitElementList)
+                elementsCountThroughWall, transitElementList, closedProximalEnd)
 
             # Create nodes and elements
             nextNodeIdentifier, nextElementIdentifier, annotationGroups = createNodesAndElementsTeniaColi(
                 region, xList, d1List, d2List, d3List, xFlat, d1Flat, d2Flat, xTexture, d1Texture, d2Texture,
                 elementsCountAroundTC, elementsCountAroundHaustrum, elementsCountAlongSegment, elementsCountThroughWall,
-                tcCount, annotationGroups, annotationArray, firstNodeIdentifier, firstElementIdentifier,
-                useCubicHermiteThroughWall, useCrossDerivatives)
+                tcCount, annotationGroupsAround, annotationGroupsAlong, annotationGroupsThroughWall,
+                firstNodeIdentifier, firstElementIdentifier, useCubicHermiteThroughWall, useCrossDerivatives,
+                closedProximalEnd)
         else:
             # Create flat and texture coordinates
             xFlat, d1Flat, d2Flat, xTexture, d1Texture, d2Texture = tubemesh.createFlatAndTextureCoordinates(
@@ -314,8 +331,9 @@ class MeshType_3d_colonsegment1(Scaffold_base):
             nextNodeIdentifier, nextElementIdentifier, annotationGroups = tubemesh.createNodesAndElements(
                 region, xList, d1List, d2List, d3List, xFlat, d1Flat, d2Flat, xTexture, d1Texture, d2Texture,
                 elementsCountAround, elementsCountAlongSegment, elementsCountThroughWall,
-                annotationGroups, annotationArray, firstNodeIdentifier, firstElementIdentifier,
-                useCubicHermiteThroughWall, useCrossDerivatives, closedProximalEnd=False)
+                annotationGroupsAround, annotationGroupsAlong, annotationGroupsThroughWall,
+                firstNodeIdentifier, firstElementIdentifier, useCubicHermiteThroughWall, useCrossDerivatives,
+                closedProximalEnd)
 
         return annotationGroups
 
@@ -342,7 +360,7 @@ class ColonSegmentTubeMeshInnerPoints:
     def __init__(self, region, elementsCountAroundTC, elementsCountAroundHaustrum,
         elementsCountAlongSegment, tcCount, segmentLengthEndDerivativeFactor,
         segmentLengthMidDerivativeFactor, segmentLength, wallThickness,
-        cornerInnerRadiusFactor, haustrumInnerRadiusFactor, innerRadiusAlongElementList,
+        cornerInnerRadiusFactor, haustrumInnerRadiusFactorAlongElementList, innerRadiusAlongElementList,
         dInnerRadiusAlongElementList, tcWidthAlongElementList, startPhase):
 
         self._region = region
@@ -355,7 +373,7 @@ class ColonSegmentTubeMeshInnerPoints:
         self._segmentLength = segmentLength
         self._wallThickness = wallThickness
         self._cornerInnerRadiusFactor = cornerInnerRadiusFactor
-        self._haustrumInnerRadiusFactor = haustrumInnerRadiusFactor
+        self._haustrumInnerRadiusFactorAlongElementList = haustrumInnerRadiusFactorAlongElementList
         self._innerRadiusAlongElementList = innerRadiusAlongElementList
         self._dInnerRadiusAlongElementList = dInnerRadiusAlongElementList
         self._tcWidthAlongElementList = tcWidthAlongElementList
@@ -375,13 +393,17 @@ class ColonSegmentTubeMeshInnerPoints:
         tcWidthSegmentList = self._tcWidthAlongElementList[nSegment*self._elementsCountAlongSegment:
                                                            (nSegment + 1)*self._elementsCountAlongSegment + 1]
 
-        xInner, d1Inner, d2Inner, transitElementList, xiSegment, relaxedLengthSegment, \
-            contractedWallThicknessSegment, segmentAxis, annotationGroups, annotationArray\
-            = getColonSegmentInnerPoints(self._region,
+        haustrumInnerRadiusFactorSegmentList = self._haustrumInnerRadiusFactorAlongElementList[
+                                               nSegment * self._elementsCountAlongSegment:
+                                               (nSegment + 1) * self._elementsCountAlongSegment + 1]
+
+        xInner, d1Inner, d2Inner, transitElementList, xiSegment, relaxedLengthSegment, contractedWallThicknessSegment, \
+        segmentAxis, annotationGroupsAround = \
+            getColonSegmentInnerPoints(self._region,
                 self._elementsCountAroundTC, self._elementsCountAroundHaustrum, self._elementsCountAlongSegment,
                 self._tcCount, self._segmentLengthEndDerivativeFactor, self._segmentLengthMidDerivativeFactor,
                 self._segmentLength, self._wallThickness,
-                self._cornerInnerRadiusFactor, self._haustrumInnerRadiusFactor,
+                self._cornerInnerRadiusFactor, haustrumInnerRadiusFactorSegmentList,
                 radiusSegmentList, dRadiusSegmentList, tcWidthSegmentList,
                 self._startPhase)
 
@@ -398,7 +420,8 @@ class ColonSegmentTubeMeshInnerPoints:
         contractedWallThickness = contractedWallThicknessSegment[startIdx:self._elementsCountAlongSegment + 1]
         self._contractedWallThicknessList += contractedWallThickness
 
-        return xInner, d1Inner, d2Inner, transitElementList, segmentAxis, annotationGroups, annotationArray
+        return xInner, d1Inner, d2Inner, transitElementList, segmentAxis, \
+               annotationGroupsAround
 
     def getTubeTCWidthList(self):
         return self._tubeTCWidthList
@@ -413,7 +436,7 @@ def getColonSegmentInnerPoints(region, elementsCountAroundTC,
     elementsCountAroundHaustrum, elementsCountAlongSegment,
     tcCount, segmentLengthEndDerivativeFactor,
     segmentLengthMidDerivativeFactor, segmentLength, wallThickness,
-    cornerInnerRadiusFactor, haustrumInnerRadiusFactor,
+    cornerInnerRadiusFactor, haustrumInnerRadiusFactorSegmentList,
     radiusSegmentList, dRadiusSegmentList, tcWidthSegmentList,
     startPhase):
     """
@@ -439,7 +462,7 @@ def getColonSegmentInnerPoints(region, elementsCountAroundTC,
     inter-haustral septa. Factor is multiplied by inner radius
     to get a radius of curvature at the corners. Only applicable for three tenia
     coli. Set to zero for two tenia coli.
-    :param haustrumInnerRadiusFactor: Factor is multiplied by inner
+    :param haustrumInnerRadiusFactorSegmentList: Factor is multiplied by inner
     radius to obtain radius of intersecting circles in the middle cross-section
     along a haustra segment.
     :param radiusSegmentList: List of inner radius defined from center of triangular
@@ -462,8 +485,7 @@ def getColonSegmentInnerPoints(region, elementsCountAroundTC,
     along colon segment. Assume incompressiblity and a shortened length around will
     result in a thicker wall and vice-versa.
     :return segmentAxis: Axis of segment.
-    :return annotationGroups, annotationArray: annotationArray stores annotation
-    names of elements around.
+    :return annotationGroupsAround: annotation groups for elements around.
     """
 
     transitElementListHaustrum = ([0]*int(elementsCountAroundTC*0.5) + [1] +
@@ -536,10 +558,17 @@ def getColonSegmentInnerPoints(region, elementsCountAroundTC,
         # Create annotation groups for mouse colon
         mzGroup = AnnotationGroup(region, get_colon_term("mesenteric zone"))
         nonmzGroup = AnnotationGroup(region, get_colon_term("non-mesenteric zone"))
-        annotationGroups = [mzGroup, nonmzGroup]
-        annotationArray = (['mesenteric zone']*int(elementsCountAroundTC*0.5) +
-                           ['non-mesenteric zone']*elementsCountAroundHaustrum +
-                           ['mesenteric zone']*int(elementsCountAroundTC*0.5))
+        elementsCountAroundGroups = [int(elementsCountAroundTC*0.5),
+                                     elementsCountAroundHaustrum,
+                                     int(elementsCountAroundTC * 0.5)]
+
+        annotationGroupAround = [[mzGroup], [nonmzGroup], [mzGroup]]
+
+        annotationGroupsAround = []
+        for i in range(len(elementsCountAroundGroups)):
+            elementsCount = elementsCountAroundGroups[i]
+            for n in range(elementsCount):
+                annotationGroupsAround.append(annotationGroupAround[i])
 
     else:
         elementsCountAroundHalfHaustrum = int((elementsCountAroundTC + elementsCountAroundHaustrum)*0.5)
@@ -550,6 +579,7 @@ def getColonSegmentInnerPoints(region, elementsCountAroundTC,
             radius = radiusSegmentList[n2]
             sdRadius = dRadiusSegmentList[n2]
             tcWidth = tcWidthSegmentList[n2]
+            haustrumInnerRadiusFactor = haustrumInnerRadiusFactorSegmentList[n2]
 
             # Create segment of inner radius
             # Calculate x and d1 at the start, mid, and end faces
@@ -736,11 +766,12 @@ def getColonSegmentInnerPoints(region, elementsCountAroundTC,
             d2Final = d2Final + d2AlongList
 
         # Create annotation groups
-        annotationGroups = []
-        annotationArray = ['']*(elementsCountAround)
+        annotationGroupsAround = []
+        for i in range(elementsCountAround):
+            annotationGroupsAround.append([ ])
 
     return xFinal, d1Final, d2Final, transitElementList, xiList, relaxedLengthList, contractedWallThicknessList, \
-           segmentAxis, annotationGroups, annotationArray
+           segmentAxis, annotationGroupsAround
 
 def createHalfSetInterHaustralSegment(elementsCountAroundTC, elementsCountAroundHaustrum,
     tcCount, tcWidth, radius, cornerInnerRadiusFactor, sampleElementOut):
@@ -1199,10 +1230,8 @@ def getXiListFromOuterLengthProfile(xInner, d1Inner, segmentAxis,
 def getTeniaColi(region, xList, d1List, d2List, d3List, curvatureList,
     tcCount, elementsCountAroundTC, elementsCountAroundHaustrum,
     elementsCountAlong, elementsCountThroughWall,
-    tubeTCWidthList, tcThickness, sx,
-    annotationGroups, annotationArray):
+    tubeTCWidthList, tcThickness, sx, annotationGroupsAround, closedProximalEnd):
     """
-    EDIT
     Create equally spaced points for tenia coli over the outer
     surface of the colon. Points are sampled from a cubic
     hermite curve running through the left edge of tenia coli
@@ -1224,12 +1253,13 @@ def getTeniaColi(region, xList, d1List, d2List, d3List, curvatureList,
     :param tubeTCWidthList: List of tenia coli width along tube length.
     :param tcThickness: Thickness of tenia coli at its thickest part.
     :param sx: Coordinates of central path.
-    :param annotationGroups, annotationArray: annotations for tube
-    :return: coordinates, derivatives, annotationGroups for colon with tenia
+    :param annotationGroupsAround: annotation groups for elements around tube.
+    :param closedProximalEnd: True when proximal end of tube is closed.
+    :return: coordinates, derivatives, annotationGroupsAround for colon with tenia
     coli.
     """
 
-    elementsCountAround = (elementsCountAroundTC + elementsCountAroundHaustrum)*tcCount
+    elementsCountAround = (elementsCountAroundTC + elementsCountAroundHaustrum) * tcCount
     TCEdgeFactor = 1.5
     xTCArranged = []
     d1TCArranged = []
@@ -1237,22 +1267,28 @@ def getTeniaColi(region, xList, d1List, d2List, d3List, curvatureList,
     d3TCArranged = []
 
     # Create points for tenia coli
-    for n2 in range(elementsCountAlong + 1):
+    for n2 in range(1 if closedProximalEnd else 0, elementsCountAlong + 1):
         xTCRaw = []
         d1TCRaw = []
         d2TCRaw = []
         d3TCRaw = []
         tcWidth = tubeTCWidthList[n2]
         for N in range(tcCount):
-            idxTCMid = n2*elementsCountAround*(elementsCountThroughWall + 1) + \
-                       elementsCountAround*elementsCountThroughWall + \
-                       N*(elementsCountAroundTC + elementsCountAroundHaustrum)
+            idxTCMid = elementsCountThroughWall + 1 + (n2 - 1) * elementsCountAround * (elementsCountThroughWall + 1) \
+                       + elementsCountAround * elementsCountThroughWall + \
+                       N * (elementsCountAroundTC + elementsCountAroundHaustrum) if closedProximalEnd \
+                else n2 * elementsCountAround * (elementsCountThroughWall + 1) + \
+                     elementsCountAround * elementsCountThroughWall + \
+                     N * (elementsCountAroundTC + elementsCountAroundHaustrum)
             unitNorm = vector.normalise(d3List[idxTCMid])
             xMid = [xList[idxTCMid][i] + unitNorm[i]*tcThickness for i in range(3)]
             d1Mid = d1List[idxTCMid]
             TCStartIdx = idxTCMid - int(elementsCountAroundTC*0.5) if N > 0 else \
                 idxTCMid + tcCount*(elementsCountAroundTC + elementsCountAroundHaustrum) - int(elementsCountAroundTC*0.5)
             TCEndIdx = idxTCMid + int(elementsCountAroundTC*0.5)
+            if closedProximalEnd:
+                tcWidth = vector.magnitude([xList[TCStartIdx][c] - xList[TCEndIdx][c] for c in range(3)])
+
             v1 = xList[TCStartIdx]
             v2 = xMid
             d1MidScaled = [c*tcWidth*TCEdgeFactor for c in vector.normalise(d1Mid)]
@@ -1295,26 +1331,32 @@ def getTeniaColi(region, xList, d1List, d2List, d3List, curvatureList,
 
     x, d1, d2, d3 = combineTeniaColiWithColon(xList, d1List, d2List, d3List, xTCArranged, d1TCArranged,
         d2TCArranged, d3TCArranged, (elementsCountAroundTC - 1)*tcCount, elementsCountAround,
-        elementsCountAlong, elementsCountThroughWall)
+        elementsCountAlong, elementsCountThroughWall, closedProximalEnd)
 
     # Update annotation groups
-    if tcCount == 3:
-        tlGroup = AnnotationGroup(region, get_colon_term("tenia libera"))
-        tmGroup = AnnotationGroup(region, get_colon_term("tenia mesocolica"))
-        toGroup = AnnotationGroup(region, get_colon_term("tenia omentalis"))
-        annotationGroupsTC = [tlGroup, tmGroup, toGroup]
-        annotationArrayTC = (['tenia omentalis']*(elementsCountAroundTC//2) +
-                             ['tenia libera']*elementsCountAroundTC +
-                             ['tenia mesocolica']*elementsCountAroundTC +
-                             ['tenia omentalis']*(elementsCountAroundTC//2))
-        annotationGroups += annotationGroupsTC
-        annotationArray += annotationArrayTC
+    if tcCount == 2 or closedProximalEnd:
+        tcGroup = AnnotationGroup(region, get_colon_term("taenia coli"))
+        for i in range(elementsCountAroundTC * tcCount):
+            annotationGroupsAround.append([tcGroup])
 
-    return x, d1, d2, d3, annotationGroups, annotationArray
+    elif tcCount == 3:
+        tlGroup = AnnotationGroup(region, get_colon_term("taenia libera"))
+        tmGroup = AnnotationGroup(region, get_colon_term("taenia mesocolica"))
+        toGroup = AnnotationGroup(region, get_colon_term("taenia omentalis"))
+        annotationGroupAround = [[toGroup], [tlGroup], [tmGroup], [toGroup]]
+        elementsCountAroundGroups = [elementsCountAroundTC // 2, elementsCountAroundTC, elementsCountAroundTC,
+                                     elementsCountAroundTC // 2]
+
+        for i in range(len(elementsCountAroundGroups)):
+            elementsCount = elementsCountAroundGroups[i]
+            for n in range(elementsCount):
+                annotationGroupsAround.append(annotationGroupAround[i])
+
+    return x, d1, d2, d3, annotationGroupsAround
 
 def combineTeniaColiWithColon(xList, d1List, d2List, d3List, xTC, d1TC, d2TC,
     d3TC, nodesCountAroundTC, elementsCountAround, elementsCountAlong,
-    elementsCountThroughWall):
+    elementsCountThroughWall, closedProximalEnd):
     """
     Arranges coordinates and derivatives around inner surface to
     outer surface, followed by tenia coli points before extending
@@ -1325,6 +1367,7 @@ def combineTeniaColiWithColon(xList, d1List, d2List, d3List, xTC, d1TC, d2TC,
     :param elementsCountAround: Number of elements around colon.
     :param elementsCountAlong: Number of elements along colon.
     :param elementsCountThroughWall: Number of elements through wall.
+    :param closedProximalEnd: True when proximal end of tube is closed.
     : return: reordered coordinates and derivatives
     """
     x = []
@@ -1335,30 +1378,42 @@ def combineTeniaColiWithColon(xList, d1List, d2List, d3List, xTC, d1TC, d2TC,
     # Add tenia coli points to coordinates list
     for n2 in range(elementsCountAlong + 1):
         for n3 in range(elementsCountThroughWall + 1):
-            for n1 in range(elementsCountAround):
-                # Append colon wall coordinates from inside to outside wall
-                n = n2*elementsCountAround*(elementsCountThroughWall + 1) + n3*elementsCountAround + n1
-                x.append(xList[n])
-                d1.append(d1List[n])
-                d2.append(d2List[n])
+            if closedProximalEnd and n2 == 0:
+                x.append(xList[n3])
+                d1.append(d1List[n3])
+                d2.append(d2List[n3])
                 if d3List:
-                    d3.append(d3List[n])
+                    d3.append(d3List[n3])
+            else:
+                for n1 in range(elementsCountAround):
+                    # Append colon wall coordinates from inside to outside wall
+                    n = (elementsCountThroughWall + 1) + \
+                        (n2 - 1) * elementsCountAround * (elementsCountThroughWall + 1) + \
+                        n3 * elementsCountAround + n1 if closedProximalEnd \
+                        else n2 * elementsCountAround * (elementsCountThroughWall + 1) + n3 * elementsCountAround + n1
+
+                    x.append(xList[n])
+                    d1.append(d1List[n])
+                    d2.append(d2List[n])
+                    if d3List:
+                        d3.append(d3List[n])
 
         # Append tenia coli coordinates
-        for nTC in range(nodesCountAroundTC):
-            nTCCount = n2*nodesCountAroundTC + nTC
-            x.append(xTC[nTCCount])
-            d1.append(d1TC[nTCCount])
-            d2.append(d2TC[nTCCount])
-            if d3TC:
-                d3.append(d3TC[nTCCount])
+        if not (closedProximalEnd and n2 == 0):
+            for nTC in range(nodesCountAroundTC):
+                nTCCount = (n2 - 1 if closedProximalEnd else n2) * nodesCountAroundTC + nTC
+                x.append(xTC[nTCCount])
+                d1.append(d1TC[nTCCount])
+                d2.append(d2TC[nTCCount])
+                if d3TC:
+                    d3.append(d3TC[nTCCount])
 
     return x, d1, d2, d3
 
 def createFlatAndTextureCoordinatesTeniaColi(xiList, relaxedLengthList,
     totalLengthAlong, wallThickness, tcCount, tcThickness,
     elementsCountAroundTC, elementsCountAroundHaustrum,
-    elementsCountAlong, elementsCountThroughWall, transitElementList):
+    elementsCountAlong, elementsCountThroughWall, transitElementList, closedProximalEnd):
     """
     Calculates flat coordinates and texture coordinates
     for a colon scaffold with tenia coli when it is opened
@@ -1377,6 +1432,7 @@ def createFlatAndTextureCoordinatesTeniaColi(xiList, relaxedLengthList,
     :param elementsCountThroughWall: Number of elements through wall.
     :param transitElementList: stores true if element around is an element that
     transits from tenia coli / mesenteric zone to haustrum / non-mesenteric zone.
+    :param closedProximalEnd: True when proximal end of tube is closed.
     :return: coordinates and derivatives of flat and texture coordinates fields.
     """
 
@@ -1491,12 +1547,12 @@ def createFlatAndTextureCoordinatesTeniaColi(xiList, relaxedLengthList,
 
     xFlat, d1Flat, d2Flat, _ = combineTeniaColiWithColon(xFlatColon, d1FlatColon, d2FlatColon, [],
         xFlatListTC, d1FlatListTC, d2FlatListTC, [], (elementsCountAroundTC - 1)*tcCount + 1,
-        elementsCountAround + 1, elementsCountAlong, elementsCountThroughWall)
+        elementsCountAround + 1, elementsCountAlong, elementsCountThroughWall, closedProximalEnd)
 
     xTexture, d1Texture, d2Texture, _ = combineTeniaColiWithColon(xTextureColon, d1TextureColon,
         d2TextureColon, [], xTextureListTC, d1TextureListTC, d2TextureListTC, [],
         (elementsCountAroundTC - 1)*tcCount + 1, elementsCountAround + 1, elementsCountAlong,
-        elementsCountThroughWall)
+        elementsCountThroughWall, closedProximalEnd)
 
     return xFlat, d1Flat, d2Flat, xTexture, d1Texture, d2Texture
 
@@ -1506,12 +1562,13 @@ def createNodesAndElementsTeniaColi(region,
     xTexture, d1Texture, d2Texture,
     elementsCountAroundTC, elementsCountAroundHaustrum,
     elementsCountAlong, elementsCountThroughWall, tcCount,
-    annotationGroups, annotationArray,
+    annotationGroupsAround, annotationGroupsAlong, annotationGroupsThroughWall,
     firstNodeIdentifier, firstElementIdentifier,
-    useCubicHermiteThroughWall, useCrossDerivatives):
+    useCubicHermiteThroughWall, useCrossDerivatives, closedProximalEnd):
     """
     Create nodes and elements for the coordinates, flat coordinates,
-    and texture coordinates field.
+    and texture coordinates field. Note that flat and texture coordinates
+    not implemented for closedProximalEnd yet.
     :param x, d1, d2, d3: coordinates and derivatives of coordinates field.
     :param xFlat, d1Flat, d2Flat, d3Flat: coordinates and derivatives of
     flat coordinates field.
@@ -1522,13 +1579,15 @@ def createNodesAndElementsTeniaColi(region,
     :param elementsCountAlong: Number of elements along colon.
     :param elementsCountThroughWall: Number of elements through wall.
     :param tcCount: Number of tenia coli.
-    :param annotationGroups: stores information about annotation groups.
-    :param annotationArray: stores annotation names of elements around.
+    :param annotationGroupsAround: Annotation groups of elements around.
+    :param annotationGroupsAlong: Annotation groups of elements along.
+    :param annotationGroupsThroughWall: Annotation groups of elements through wall.
     :param firstNodeIdentifier, firstElementIdentifier: first node and element
     identifier to use.
-    :param useCubicHermiteThroughWall: use linear when false
-    :param useCrossDerivatives: use cross derivatives when true
-    :return nodeIdentifier, elementIdentifier, annotationGroups
+    :param useCubicHermiteThroughWall: use linear when false.
+    :param useCrossDerivatives: use cross derivatives when true.
+    :param closedProximalEnd: True when proximal end of tube is closed.
+    :return nodeIdentifier, elementIdentifier, allAnnotationGroups
     """
 
     nodeIdentifier = firstNodeIdentifier
@@ -1580,24 +1639,6 @@ def createNodesAndElementsTeniaColi(region,
     eft2 = eftfactory.createEftWedgeXi1Zero()
     elementtemplate2.defineField(coordinates, -1, eft2)
 
-    # Create flat coordinates field
-    flatCoordinates = findOrCreateFieldCoordinates(fm, name="flat coordinates")
-    flatNodetemplate1 = nodes.createNodetemplate()
-    flatNodetemplate1.defineField(flatCoordinates)
-    flatNodetemplate1.setValueNumberOfVersions(flatCoordinates, -1, Node.VALUE_LABEL_VALUE, 1)
-    flatNodetemplate1.setValueNumberOfVersions(flatCoordinates, -1, Node.VALUE_LABEL_D_DS1, 1)
-    flatNodetemplate1.setValueNumberOfVersions(flatCoordinates, -1, Node.VALUE_LABEL_D_DS2, 1)
-    if useCrossDerivatives:
-        flatNodetemplate1.setValueNumberOfVersions(flatCoordinates, -1, Node.VALUE_LABEL_D2_DS1DS2, 1)
-
-    flatNodetemplate2 = nodes.createNodetemplate()
-    flatNodetemplate2.defineField(flatCoordinates)
-    flatNodetemplate2.setValueNumberOfVersions(flatCoordinates, -1, Node.VALUE_LABEL_VALUE, 2)
-    flatNodetemplate2.setValueNumberOfVersions(flatCoordinates, -1, Node.VALUE_LABEL_D_DS1, 2)
-    flatNodetemplate2.setValueNumberOfVersions(flatCoordinates, -1, Node.VALUE_LABEL_D_DS2, 2)
-    if useCrossDerivatives:
-        flatNodetemplate2.setValueNumberOfVersions(flatCoordinates, -1, Node.VALUE_LABEL_D2_DS1DS2, 2)
-
     bicubichermitelinear = eftfactory_bicubichermitelinear(mesh, useCrossDerivatives)
     eftTexture3 = bicubichermitelinear.createEftBasic()
     eftTexture4 = bicubichermitelinear.createEftOpenTube()
@@ -1605,63 +1646,83 @@ def createNodesAndElementsTeniaColi(region,
     eftTexture6 = bicubichermitelinear.createEftWedgeXi1Zero()
     eftTexture7 = bicubichermitelinear.createEftWedgeXi1ZeroOpenTube()
 
-    flatElementtemplate1 = mesh.createElementtemplate()
-    flatElementtemplate1.setElementShapeType(Element.SHAPE_TYPE_CUBE)
-    flatElementtemplate1.defineField(flatCoordinates, -1, eftTexture3)
+    if xFlat:
+        # Create flat coordinates field
+        flatCoordinates = findOrCreateFieldCoordinates(fm, name="flat coordinates")
+        flatNodetemplate1 = nodes.createNodetemplate()
+        flatNodetemplate1.defineField(flatCoordinates)
+        flatNodetemplate1.setValueNumberOfVersions(flatCoordinates, -1, Node.VALUE_LABEL_VALUE, 1)
+        flatNodetemplate1.setValueNumberOfVersions(flatCoordinates, -1, Node.VALUE_LABEL_D_DS1, 1)
+        flatNodetemplate1.setValueNumberOfVersions(flatCoordinates, -1, Node.VALUE_LABEL_D_DS2, 1)
+        if useCrossDerivatives:
+            flatNodetemplate1.setValueNumberOfVersions(flatCoordinates, -1, Node.VALUE_LABEL_D2_DS1DS2, 1)
 
-    flatElementtemplate2 = mesh.createElementtemplate()
-    flatElementtemplate2.setElementShapeType(Element.SHAPE_TYPE_CUBE)
-    flatElementtemplate2.defineField(flatCoordinates, -1, eftTexture4)
+        flatNodetemplate2 = nodes.createNodetemplate()
+        flatNodetemplate2.defineField(flatCoordinates)
+        flatNodetemplate2.setValueNumberOfVersions(flatCoordinates, -1, Node.VALUE_LABEL_VALUE, 2)
+        flatNodetemplate2.setValueNumberOfVersions(flatCoordinates, -1, Node.VALUE_LABEL_D_DS1, 2)
+        flatNodetemplate2.setValueNumberOfVersions(flatCoordinates, -1, Node.VALUE_LABEL_D_DS2, 2)
+        if useCrossDerivatives:
+            flatNodetemplate2.setValueNumberOfVersions(flatCoordinates, -1, Node.VALUE_LABEL_D2_DS1DS2, 2)
 
-    flatElementtemplate3 = mesh.createElementtemplate()
-    flatElementtemplate3.setElementShapeType(Element.SHAPE_TYPE_CUBE)
-    flatElementtemplate3.defineField(flatCoordinates, -1, eftTexture5)
+        flatElementtemplate1 = mesh.createElementtemplate()
+        flatElementtemplate1.setElementShapeType(Element.SHAPE_TYPE_CUBE)
+        flatElementtemplate1.defineField(flatCoordinates, -1, eftTexture3)
 
-    flatElementtemplate4 = mesh.createElementtemplate()
-    flatElementtemplate4.setElementShapeType(Element.SHAPE_TYPE_CUBE)
-    flatElementtemplate4.defineField(flatCoordinates, -1, eftTexture6)
+        flatElementtemplate2 = mesh.createElementtemplate()
+        flatElementtemplate2.setElementShapeType(Element.SHAPE_TYPE_CUBE)
+        flatElementtemplate2.defineField(flatCoordinates, -1, eftTexture4)
 
-    flatElementtemplate5 = mesh.createElementtemplate()
-    flatElementtemplate5.setElementShapeType(Element.SHAPE_TYPE_CUBE)
-    flatElementtemplate5.defineField(flatCoordinates, -1, eftTexture7)
+        flatElementtemplate3 = mesh.createElementtemplate()
+        flatElementtemplate3.setElementShapeType(Element.SHAPE_TYPE_CUBE)
+        flatElementtemplate3.defineField(flatCoordinates, -1, eftTexture5)
 
-    # Create texture coordinates field
-    textureCoordinates = findOrCreateFieldTextureCoordinates(fm)
-    textureNodetemplate1 = nodes.createNodetemplate()
-    textureNodetemplate1.defineField(textureCoordinates)
-    textureNodetemplate1.setValueNumberOfVersions(textureCoordinates, -1, Node.VALUE_LABEL_VALUE, 1)
-    textureNodetemplate1.setValueNumberOfVersions(textureCoordinates, -1, Node.VALUE_LABEL_D_DS1, 1)
-    textureNodetemplate1.setValueNumberOfVersions(textureCoordinates, -1, Node.VALUE_LABEL_D_DS2, 1)
-    if useCrossDerivatives:
-        textureNodetemplate1.setValueNumberOfVersions(textureCoordinates, -1, Node.VALUE_LABEL_D2_DS1DS2, 1)
+        flatElementtemplate4 = mesh.createElementtemplate()
+        flatElementtemplate4.setElementShapeType(Element.SHAPE_TYPE_CUBE)
+        flatElementtemplate4.defineField(flatCoordinates, -1, eftTexture6)
 
-    textureNodetemplate2 = nodes.createNodetemplate()
-    textureNodetemplate2.defineField(textureCoordinates)
-    textureNodetemplate2.setValueNumberOfVersions(textureCoordinates, -1, Node.VALUE_LABEL_VALUE, 2)
-    textureNodetemplate2.setValueNumberOfVersions(textureCoordinates, -1, Node.VALUE_LABEL_D_DS1, 2)
-    textureNodetemplate2.setValueNumberOfVersions(textureCoordinates, -1, Node.VALUE_LABEL_D_DS2, 2)
-    if useCrossDerivatives:
-        textureNodetemplate2.setValueNumberOfVersions(textureCoordinates, -1, Node.VALUE_LABEL_D2_DS1DS2, 2)
+        flatElementtemplate5 = mesh.createElementtemplate()
+        flatElementtemplate5.setElementShapeType(Element.SHAPE_TYPE_CUBE)
+        flatElementtemplate5.defineField(flatCoordinates, -1, eftTexture7)
 
-    textureElementtemplate1 = mesh.createElementtemplate()
-    textureElementtemplate1.setElementShapeType(Element.SHAPE_TYPE_CUBE)
-    textureElementtemplate1.defineField(textureCoordinates, -1, eftTexture3)
+    if xTexture:
+        # Create texture coordinates field
+        textureCoordinates = findOrCreateFieldTextureCoordinates(fm)
+        textureNodetemplate1 = nodes.createNodetemplate()
+        textureNodetemplate1.defineField(textureCoordinates)
+        textureNodetemplate1.setValueNumberOfVersions(textureCoordinates, -1, Node.VALUE_LABEL_VALUE, 1)
+        textureNodetemplate1.setValueNumberOfVersions(textureCoordinates, -1, Node.VALUE_LABEL_D_DS1, 1)
+        textureNodetemplate1.setValueNumberOfVersions(textureCoordinates, -1, Node.VALUE_LABEL_D_DS2, 1)
+        if useCrossDerivatives:
+            textureNodetemplate1.setValueNumberOfVersions(textureCoordinates, -1, Node.VALUE_LABEL_D2_DS1DS2, 1)
 
-    textureElementtemplate2 = mesh.createElementtemplate()
-    textureElementtemplate2.setElementShapeType(Element.SHAPE_TYPE_CUBE)
-    textureElementtemplate2.defineField(textureCoordinates, -1, eftTexture4)
+        textureNodetemplate2 = nodes.createNodetemplate()
+        textureNodetemplate2.defineField(textureCoordinates)
+        textureNodetemplate2.setValueNumberOfVersions(textureCoordinates, -1, Node.VALUE_LABEL_VALUE, 2)
+        textureNodetemplate2.setValueNumberOfVersions(textureCoordinates, -1, Node.VALUE_LABEL_D_DS1, 2)
+        textureNodetemplate2.setValueNumberOfVersions(textureCoordinates, -1, Node.VALUE_LABEL_D_DS2, 2)
+        if useCrossDerivatives:
+            textureNodetemplate2.setValueNumberOfVersions(textureCoordinates, -1, Node.VALUE_LABEL_D2_DS1DS2, 2)
 
-    textureElementtemplate3 = mesh.createElementtemplate()
-    textureElementtemplate3.setElementShapeType(Element.SHAPE_TYPE_CUBE)
-    textureElementtemplate3.defineField(textureCoordinates, -1, eftTexture5)
+        textureElementtemplate1 = mesh.createElementtemplate()
+        textureElementtemplate1.setElementShapeType(Element.SHAPE_TYPE_CUBE)
+        textureElementtemplate1.defineField(textureCoordinates, -1, eftTexture3)
 
-    textureElementtemplate4 = mesh.createElementtemplate()
-    textureElementtemplate4.setElementShapeType(Element.SHAPE_TYPE_CUBE)
-    textureElementtemplate4.defineField(textureCoordinates, -1, eftTexture6)
+        textureElementtemplate2 = mesh.createElementtemplate()
+        textureElementtemplate2.setElementShapeType(Element.SHAPE_TYPE_CUBE)
+        textureElementtemplate2.defineField(textureCoordinates, -1, eftTexture4)
 
-    textureElementtemplate5 = mesh.createElementtemplate()
-    textureElementtemplate5.setElementShapeType(Element.SHAPE_TYPE_CUBE)
-    textureElementtemplate5.defineField(textureCoordinates, -1, eftTexture7)
+        textureElementtemplate3 = mesh.createElementtemplate()
+        textureElementtemplate3.setElementShapeType(Element.SHAPE_TYPE_CUBE)
+        textureElementtemplate3.defineField(textureCoordinates, -1, eftTexture5)
+
+        textureElementtemplate4 = mesh.createElementtemplate()
+        textureElementtemplate4.setElementShapeType(Element.SHAPE_TYPE_CUBE)
+        textureElementtemplate4.defineField(textureCoordinates, -1, eftTexture6)
+
+        textureElementtemplate5 = mesh.createElementtemplate()
+        textureElementtemplate5.setElementShapeType(Element.SHAPE_TYPE_CUBE)
+        textureElementtemplate5.defineField(textureCoordinates, -1, eftTexture7)
 
     # create nodes for coordinates field
     for n in range(len(x)):
@@ -1680,100 +1741,310 @@ def createNodesAndElementsTeniaColi(region,
         nodeIdentifier = nodeIdentifier + 1
 
     # Create nodes for flat coordinates field
-    nodeIdentifier = firstNodeIdentifier
-    for n2 in range(elementsCountAlong + 1):
-        for n3 in range(elementsCountThroughWall + 1):
-            for n1 in range(elementsCountAround):
-                i = n2*(elementsCountAround + 1)*(elementsCountThroughWall + 1) + (elementsCountAround + 1)*n3 + n1 + \
-                    n2*((elementsCountAroundTC - 1)*tcCount + 1)
+    if xFlat and xTexture:
+        nodeIdentifier = firstNodeIdentifier
+        for n2 in range(elementsCountAlong + 1):
+            for n3 in range(elementsCountThroughWall + 1):
+                for n1 in range(elementsCountAround):
+                    i = n2*(elementsCountAround + 1)*(elementsCountThroughWall + 1) + \
+                        (elementsCountAround + 1)*n3 + n1 + n2*((elementsCountAroundTC - 1)*tcCount + 1)
+                    node = nodes.findNodeByIdentifier(nodeIdentifier)
+                    node.merge(flatNodetemplate2 if n1 == 0 else flatNodetemplate1)
+                    node.merge(textureNodetemplate2 if n1 == 0 else textureNodetemplate1)
+                    cache.setNode(node)
+                    # print('NodeIdentifier', nodeIdentifier, 'version 1', xFlatList[i])
+                    flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_VALUE, 1, xFlat[i])
+                    flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS1, 1, d1Flat[i])
+                    flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS2, 1, d2Flat[i])
+                    textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_VALUE, 1, xTexture[i])
+                    textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS1, 1, d1Texture[i])
+                    textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS2, 1, d2Texture[i])
+                    if useCrossDerivatives:
+                        flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D2_DS1DS2, 1, zero)
+                        textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D2_DS1DS2, 1, zero)
+                    if n1 == 0:
+                        # print('NodeIdentifier', nodeIdentifier, 'version 2', xFlatList[i+elementsCountAround])
+                        flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_VALUE, 2, xFlat[i+elementsCountAround])
+                        flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS1, 2, d1Flat[i+elementsCountAround])
+                        flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS2, 2, d2Flat[i+elementsCountAround])
+                        textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_VALUE, 2, xTexture[i+elementsCountAround])
+                        textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS1, 2, d1Texture[i+elementsCountAround])
+                        textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS2, 2, d2Texture[i+elementsCountAround])
+                        if useCrossDerivatives:
+                            flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D2_DS1DS2, 2, zero)
+                            textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D2_DS1DS2, 2, zero)
+                    nodeIdentifier = nodeIdentifier + 1
+
+            # Create flat coordinates nodes for tenia coli
+            for nTC in range((elementsCountAroundTC - 1)*tcCount):
+                j = i + 2 + nTC
                 node = nodes.findNodeByIdentifier(nodeIdentifier)
-                node.merge(flatNodetemplate2 if n1 == 0 else flatNodetemplate1)
-                node.merge(textureNodetemplate2 if n1 == 0 else textureNodetemplate1)
+                node.merge(flatNodetemplate2 if nTC == 0 else flatNodetemplate1)
+                node.merge(textureNodetemplate2 if nTC == 0 else textureNodetemplate1)
                 cache.setNode(node)
-                # print('NodeIdentifier', nodeIdentifier, 'version 1', xFlatList[i])
-                flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_VALUE, 1, xFlat[i])
-                flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS1, 1, d1Flat[i])
-                flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS2, 1, d2Flat[i])
-                textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_VALUE, 1, xTexture[i])
-                textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS1, 1, d1Texture[i])
-                textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS2, 1, d2Texture[i])
+                flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_VALUE, 1, xFlat[j])
+                flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS1, 1, d1Flat[j])
+                flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS2, 1, d2Flat[j])
+                textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_VALUE, 1, xTexture[j])
+                textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS1, 1, d1Texture[j])
+                textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS2, 1, d2Texture[j])
                 if useCrossDerivatives:
                     flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D2_DS1DS2, 1, zero)
                     textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D2_DS1DS2, 1, zero)
-                if n1 == 0:
-                    # print('NodeIdentifier', nodeIdentifier, 'version 2', xFlatList[i+elementsCountAround])
-                    flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_VALUE, 2, xFlat[i+elementsCountAround])
-                    flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS1, 2, d1Flat[i+elementsCountAround])
-                    flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS2, 2, d2Flat[i+elementsCountAround])
-                    textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_VALUE, 2, xTexture[i+elementsCountAround])
-                    textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS1, 2, d1Texture[i+elementsCountAround])
-                    textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS2, 2, d2Texture[i+elementsCountAround])
+                if nTC == 0:
+                    flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_VALUE, 2, xFlat[j+(elementsCountAroundTC-1)*tcCount])
+                    flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS1, 2, d1Flat[j+(elementsCountAroundTC-1)*tcCount])
+                    flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS2, 2, d2Flat[j+(elementsCountAroundTC-1)*tcCount])
+                    textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_VALUE, 2, xTexture[j+(elementsCountAroundTC-1)*tcCount])
+                    textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS1, 2, d1Texture[j+(elementsCountAroundTC-1)*tcCount])
+                    textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS2, 2, d2Texture[j+(elementsCountAroundTC-1)*tcCount])
                     if useCrossDerivatives:
                         flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D2_DS1DS2, 2, zero)
                         textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D2_DS1DS2, 2, zero)
                 nodeIdentifier = nodeIdentifier + 1
 
-        # Create flat coordinates nodes for tenia coli
-        for nTC in range((elementsCountAroundTC - 1)*tcCount):
-            j = i + 2 + nTC
-            node = nodes.findNodeByIdentifier(nodeIdentifier)
-            node.merge(flatNodetemplate2 if nTC == 0 else flatNodetemplate1)
-            node.merge(textureNodetemplate2 if nTC == 0 else textureNodetemplate1)
-            cache.setNode(node)
-            flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_VALUE, 1, xFlat[j])
-            flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS1, 1, d1Flat[j])
-            flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS2, 1, d2Flat[j])
-            textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_VALUE, 1, xTexture[j])
-            textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS1, 1, d1Texture[j])
-            textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS2, 1, d2Texture[j])
-            if useCrossDerivatives:
-                flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D2_DS1DS2, 1, zero)
-                textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D2_DS1DS2, 1, zero)
-            if nTC == 0:
-                flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_VALUE, 2, xFlat[j+(elementsCountAroundTC-1)*tcCount])
-                flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS1, 2, d1Flat[j+(elementsCountAroundTC-1)*tcCount])
-                flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS2, 2, d2Flat[j+(elementsCountAroundTC-1)*tcCount])
-                textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_VALUE, 2, xTexture[j+(elementsCountAroundTC-1)*tcCount])
-                textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS1, 2, d1Texture[j+(elementsCountAroundTC-1)*tcCount])
-                textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS2, 2, d2Texture[j+(elementsCountAroundTC-1)*tcCount])
-                if useCrossDerivatives:
-                    flatCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D2_DS1DS2, 2, zero)
-                    textureCoordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D2_DS1DS2, 2, zero)
-            nodeIdentifier = nodeIdentifier + 1
+    # Create elements
+    allAnnotationGroups = []
 
-    # create elements
-    now = elementsCountAround*(elementsCountThroughWall+1) 
-    tcOffset = (elementsCountAroundTC-1)*tcCount
-    for e2 in range(elementsCountAlong):
-        tcOffset1 = e2*(elementsCountAroundTC-1)*tcCount
+    if closedProximalEnd:
+        elementtemplate3 = mesh.createElementtemplate()
+        elementtemplate3.setElementShapeType(Element.SHAPE_TYPE_CUBE)
+        radiansPerElementAround = math.pi * 2.0 / elementsCountAround
+
+        elementtemplate4 = mesh.createElementtemplate()
+        elementtemplate4.setElementShapeType(Element.SHAPE_TYPE_CUBE)
+
+        elementtemplate5 = mesh.createElementtemplate()
+        elementtemplate5.setElementShapeType(Element.SHAPE_TYPE_CUBE)
+
+        elementtemplate6 = mesh.createElementtemplate()
+        elementtemplate6.setElementShapeType(Element.SHAPE_TYPE_CUBE)
+
+        # Create apex
         for e3 in range(elementsCountThroughWall):
             for e1 in range(elementsCountAround):
-                bni11 = e2*now + e3*elementsCountAround + e1 + 1 + tcOffset1
-                bni12 = e2*now + e3*elementsCountAround + (e1 + 1) % elementsCountAround + 1 + tcOffset1
-                bni21 = e2*now + (e3 + 1)*elementsCountAround + e1 + 1 + tcOffset1
-                bni22 = e2*now + (e3 + 1)*elementsCountAround + (e1 + 1) % elementsCountAround + 1 + tcOffset1
-                nodeIdentifiers = [ bni11, bni12, bni11 + now + tcOffset, bni12 + now + tcOffset,
-                                    bni21, bni22, bni21 + now + tcOffset, bni22 + now + tcOffset]
+                va = e1
+                vb = (e1 + 1) % elementsCountAround
+                eft3 = eftfactory.createEftShellPoleBottom(va * 100, vb * 100)
+                elementtemplate3.defineField(coordinates, -1, eft3)
+                element = mesh.createElement(elementIdentifier, elementtemplate3)
+                bni1 = e3 + 1
+                bni2 = elementsCountThroughWall + 1 + elementsCountAround * e3 + e1 + 1
+                bni3 = elementsCountThroughWall + 1 + elementsCountAround * e3 + (e1 + 1) % elementsCountAround + 1
+                nodeIdentifiers = [bni1, bni2, bni3, bni1 + 1, bni2 + elementsCountAround, bni3 + elementsCountAround]
+                element.setNodesByIdentifier(eft3, nodeIdentifiers)
+                # set general linear map coefficients
+                radiansAround = e1 * radiansPerElementAround
+                radiansAroundNext = ((e1 + 1) % elementsCountAround) * radiansPerElementAround
+                scalefactors = [
+                    -1.0,
+                    math.sin(radiansAround), math.cos(radiansAround), radiansPerElementAround,
+                    math.sin(radiansAroundNext), math.cos(radiansAroundNext), radiansPerElementAround,
+                    math.sin(radiansAround), math.cos(radiansAround), radiansPerElementAround,
+                    math.sin(radiansAroundNext), math.cos(radiansAroundNext), radiansPerElementAround
+                ]
+                result = element.setScaleFactors(eft3, scalefactors)
+                elementIdentifier = elementIdentifier + 1
+                annotationGroups = annotationGroupsAround[e1] + annotationGroupsAlong[0] + \
+                                   annotationGroupsThroughWall[e3]
+                if annotationGroups:
+                    allAnnotationGroups = mergeAnnotationGroups(allAnnotationGroups, annotationGroups)
+                    for annotationGroup in annotationGroups:
+                        meshGroup = annotationGroup.getMeshGroup(mesh)
+                        meshGroup.addElement(element)
+
+        # Create tenia coli
+        for eTC in range(int(elementsCountAroundTC * 0.5)):
+            va = eTC
+            vb = eTC + 1
+            # set general linear map coefficients
+            radiansAround = va * radiansPerElementAround
+            radiansAroundNext = vb * radiansPerElementAround
+            scalefactors = [-1.0,
+                            math.sin(radiansAround), math.cos(radiansAround), radiansPerElementAround,
+                            math.sin(radiansAroundNext), math.cos(radiansAroundNext), radiansPerElementAround]
+
+            bni21 = elementsCountThroughWall + 1
+            bni22 = bni21 + elementsCountAround * elementsCountThroughWall + 1 + eTC
+            bni23 = bni22 + 1
+            bni31 = bni22 + elementsCountAround
+
+            tetrahedralElement = (eTC == int(elementsCountAroundTC * 0.5) - 1)
+            if tetrahedralElement:
+                eft4 = eftfactory.createEftTetrahedronXi1One(va * 10000, vb * 10000)
+                elementtemplate4.defineField(coordinates, -1, eft4)
+                nodeIdentifiers = [bni21, bni22, bni23, bni31]
+            else:
+                eft6 = eftfactory.createEftPyramidBottomSimple(va * 10000, vb * 10000)
+                elementtemplate6.defineField(coordinates, -1, eft6)
+                nodeIdentifiers = [bni21, bni22, bni23, bni31, bni31 + 1]
+
+            element = mesh.createElement(elementIdentifier, elementtemplate4 if tetrahedralElement else elementtemplate6)
+            element.setNodesByIdentifier(eft4 if tetrahedralElement else eft6, nodeIdentifiers)
+            element.setScaleFactors(eft4 if tetrahedralElement else eft6, scalefactors)
+            elementIdentifier = elementIdentifier + 1
+            annotationGroups = annotationGroupsAround[elementsCountAround + eTC] + annotationGroupsAlong[0]
+            if annotationGroups:
+                allAnnotationGroups = mergeAnnotationGroups(allAnnotationGroups, annotationGroups)
+                for annotationGroup in annotationGroups:
+                    meshGroup = annotationGroup.getMeshGroup(mesh)
+                    meshGroup.addElement(element)
+
+        for N in range(tcCount - 1):
+            for eTC in range(elementsCountAroundTC):
+                va = int(elementsCountAroundTC * 0.5) + elementsCountAroundHaustrum + \
+                     N * (elementsCountAroundHaustrum + elementsCountAroundTC) + eTC
+                vb = va + 1
+                # set general linear map coefficients
+                radiansAround = va * radiansPerElementAround
+                radiansAroundNext = vb * radiansPerElementAround
+                scalefactors = [
+                    -1.0,
+                    math.sin(radiansAround), math.cos(radiansAround), radiansPerElementAround,
+                    math.sin(radiansAroundNext), math.cos(radiansAroundNext), radiansPerElementAround]
+
+                bni21 = elementsCountThroughWall + 1
+                bni22 = bni21 + elementsCountAround * elementsCountThroughWall + int(elementsCountAroundTC * 0.5) + \
+                        elementsCountAroundHaustrum + N*(elementsCountAroundTC + elementsCountAroundHaustrum) + eTC + 1
+                bni23 = bni22 + 1
+                bni31 = bni21 + elementsCountAround*(elementsCountThroughWall + 1) + int(elementsCountAroundTC*0.5) + \
+                        N*(elementsCountAroundTC - 1) + eTC + 1
+
+                if eTC == 0:
+                    eft5 = eftfactory.createEftTetrahedronXi1Zero(va * 10000, vb * 10000)
+                    elementtemplate5.defineField(coordinates, -1, eft5)
+                    nodeIdentifiers = [bni21, bni22, bni23, bni31]
+                    element = mesh.createElement(elementIdentifier, elementtemplate5)
+                    element.setNodesByIdentifier(eft5, nodeIdentifiers)
+                    element.setScaleFactors(eft5, scalefactors)
+
+                elif eTC > 0 and eTC < elementsCountAroundTC - 1:
+                    eft6 = eftfactory.createEftPyramidBottomSimple(va * 10000, vb * 10000)
+                    elementtemplate6.defineField(coordinates, -1, eft6)
+                    nodeIdentifiers = [bni21, bni22, bni23, bni31-1, bni31]
+                    element = mesh.createElement(elementIdentifier, elementtemplate6)
+                    element.setNodesByIdentifier(eft6, nodeIdentifiers)
+                    element.setScaleFactors(eft6, scalefactors)
+
+                else:
+                    eft4 = eftfactory.createEftTetrahedronXi1One(va * 10000, vb * 10000)
+                    elementtemplate4.defineField(coordinates, -1, eft4)
+                    nodeIdentifiers = [bni21, bni22, bni23, bni31 - 1]
+                    element = mesh.createElement(elementIdentifier, elementtemplate4)
+                    element.setNodesByIdentifier(eft4, nodeIdentifiers)
+                    element.setScaleFactors(eft4, scalefactors)
+
+                elementIdentifier = elementIdentifier + 1
+                annotationGroups = annotationGroupsAround[elementsCountAround + int(
+                    elementsCountAroundTC * 0.5) + N * elementsCountAroundTC + eTC] + annotationGroupsAlong[0]
+                if annotationGroups:
+                    allAnnotationGroups = mergeAnnotationGroups(allAnnotationGroups, annotationGroups)
+                    for annotationGroup in annotationGroups:
+                        meshGroup = annotationGroup.getMeshGroup(mesh)
+                        meshGroup.addElement(element)
+
+        for eTC in range(int(elementsCountAroundTC * 0.5)):
+            va = int(elementsCountAround - elementsCountAroundTC * 0.5) + eTC
+            vb = (va + 1) % elementsCountAround
+            # set general linear map coefficients
+            radiansAround = va * radiansPerElementAround
+            radiansAroundNext = vb * radiansPerElementAround
+            scalefactors = [ -1.0,
+                             math.sin(radiansAround), math.cos(radiansAround), radiansPerElementAround,
+                             math.sin(radiansAroundNext), math.cos(radiansAroundNext), radiansPerElementAround]
+
+            bni21 = elementsCountThroughWall + 1
+            bni22 = bni21 + elementsCountAround * (elementsCountThroughWall + 1) - \
+                    int(elementsCountAroundTC*0.5) + eTC + 1
+            if elementsCountAroundTC > 2:
+                bni23 = bni21 + elementsCountAround * elementsCountThroughWall + 1 \
+                        if eTC == int(elementsCountAroundTC * 0.5 - 1) \
+                        else bni22 + 1
+                bni31 = bni21 + elementsCountAround * (elementsCountThroughWall + 1) + \
+                        int(tcCount - 1) * (elementsCountAroundTC - 1) + \
+                        int(elementsCountAroundTC * 0.5) + eTC + (0 if eTC > 0 else 1)
+            else:
+                bni23 = bni21 + elementsCountAround * elementsCountThroughWall + eTC + 1
+                bni31 = bni21 + elementsCountAround * (elementsCountThroughWall + 1) + 1
+            bni32 = bni21 + elementsCountAround * (elementsCountThroughWall + 1) + 1 \
+                    if eTC == int(elementsCountAroundTC * 0.5 - 1) else bni31 + 1
+
+            tetrahedralElement = (eTC == 0)
+            if tetrahedralElement:
+                eft5 = eftfactory.createEftTetrahedronXi1Zero(va * 10000, vb * 10000)
+                elementtemplate5.defineField(coordinates, -1, eft5)
+                nodeIdentifiers = [bni21, bni22, bni23, bni31]
+            else:
+                eft6 = eftfactory.createEftPyramidBottomSimple(va * 10000, vb * 10000)
+                elementtemplate6.defineField(coordinates, -1, eft6)
+                nodeIdentifiers = [bni21, bni22, bni23, bni31, bni32]
+
+            element = mesh.createElement(elementIdentifier, elementtemplate5 if tetrahedralElement else elementtemplate6)
+            element.setNodesByIdentifier(eft5 if tetrahedralElement else eft6, nodeIdentifiers)
+            element.setScaleFactors(eft5 if tetrahedralElement else eft6, scalefactors)
+            elementIdentifier = elementIdentifier + 1
+            annotationGroups = annotationGroupsAround[elementsCountAround + eTC] + annotationGroupsAlong[0]
+            if annotationGroups:
+                allAnnotationGroups = mergeAnnotationGroups(allAnnotationGroups, annotationGroups)
+                for annotationGroup in annotationGroups:
+                    meshGroup = annotationGroup.getMeshGroup(mesh)
+                    meshGroup.addElement(element)
+
+    # create regular elements
+    now = elementsCountAround * (elementsCountThroughWall + 1)
+    tcOffset = (elementsCountAroundTC - 1) * tcCount
+    for e2 in range(1 if closedProximalEnd else 0, elementsCountAlong):
+        tcOffset1 = (e2 - 1 if closedProximalEnd else e2) * (elementsCountAroundTC - 1) * tcCount
+        for e3 in range(elementsCountThroughWall):
+            for e1 in range(elementsCountAround):
+                if closedProximalEnd:
+                    bni11 = (e2 - 1) * now + e3 * elementsCountAround + e1 + 1 + (elementsCountThroughWall + 1) + \
+                            tcOffset1
+                    bni12 = (e2 - 1) * now + e3 * elementsCountAround + (e1 + 1) % elementsCountAround + 1 + \
+                            (elementsCountThroughWall + 1) + tcOffset1
+                    bni21 = (e2 - 1) * now + (e3 + 1) * elementsCountAround + e1 + 1 + \
+                            (elementsCountThroughWall + 1) + tcOffset1
+                    bni22 = (e2 - 1) * now + (e3 + 1) * elementsCountAround + (e1 + 1) % elementsCountAround + 1 + \
+                            (elementsCountThroughWall + 1) + tcOffset1
+                else:
+                    bni11 = e2 * now + e3 * elementsCountAround + e1 + 1 + tcOffset1
+                    bni12 = e2 * now + e3 * elementsCountAround + (e1 + 1) % elementsCountAround + 1 + tcOffset1
+                    bni21 = e2 * now + (e3 + 1) * elementsCountAround + e1 + 1 + tcOffset1
+                    bni22 = e2 * now + (e3 + 1) * elementsCountAround + (e1 + 1) % elementsCountAround + 1 + tcOffset1
+                nodeIdentifiers = [bni11, bni12, bni11 + now + tcOffset, bni12 + now + tcOffset,
+                                   bni21, bni22, bni21 + now + tcOffset, bni22 + now + tcOffset]
                 onOpening = e1 > elementsCountAround - 2
                 element = mesh.createElement(elementIdentifier, elementtemplate)
                 element.setNodesByIdentifier(eft, nodeIdentifiers)
-                element.merge(flatElementtemplate2 if onOpening else flatElementtemplate1)
-                element.merge(textureElementtemplate2 if onOpening else textureElementtemplate1)
-                element.setNodesByIdentifier(eftTexture4 if onOpening else eftTexture3, nodeIdentifiers)
+                if xFlat and xTexture:
+                    element.merge(flatElementtemplate2 if onOpening else flatElementtemplate1)
+                    element.merge(textureElementtemplate2 if onOpening else textureElementtemplate1)
+                    element.setNodesByIdentifier(eftTexture4 if onOpening else eftTexture3, nodeIdentifiers)
                 elementIdentifier = elementIdentifier + 1
+                annotationGroups = annotationGroupsAround[e1] + annotationGroupsAlong[e2] + \
+                                   annotationGroupsThroughWall[e3]
                 if annotationGroups:
+                    allAnnotationGroups = mergeAnnotationGroups(allAnnotationGroups, annotationGroups)
                     for annotationGroup in annotationGroups:
-                        if annotationArray[e1] == annotationGroup._name:
-                            meshGroup = annotationGroup.getMeshGroup(mesh)
-                            meshGroup.addElement(element)
+                        meshGroup = annotationGroup.getMeshGroup(mesh)
+                        meshGroup.addElement(element)
 
         # Add elements for tenia coli
         for eTC in range(int(elementsCountAroundTC*0.5)):
-            bni21 = e2*now + (elementsCountThroughWall)*elementsCountAround + eTC + 1 + tcOffset1
-            bni22 = e2*now + (elementsCountThroughWall)*elementsCountAround + eTC + 2 + tcOffset1
-            bni31 = (e2+1)*now + eTC + 1 + tcOffset1
-            bni32 = (e2+1)*now + eTC + 2 + tcOffset1
-            if eTC < int(elementsCountAroundTC*0.5) - 1:
+            if closedProximalEnd:
+                bni21 = elementsCountThroughWall + 1 + (e2 - 1) * now + elementsCountThroughWall * elementsCountAround + \
+                        eTC + 1 + tcOffset1
+                bni22 = elementsCountThroughWall + 1 + (e2 - 1) * now + elementsCountThroughWall * elementsCountAround + \
+                        eTC + 2 + tcOffset1
+                bni31 = elementsCountThroughWall + 1 + e2 * now + eTC + 1 + tcOffset1
+                bni32 = elementsCountThroughWall + 1 + e2 * now + eTC + 2 + tcOffset1
+            else:
+                bni21 = e2 * now + elementsCountThroughWall * elementsCountAround + eTC + 1 + tcOffset1
+                bni22 = e2 * now + elementsCountThroughWall * elementsCountAround + eTC + 2 + tcOffset1
+                bni31 = (e2 + 1) * now + eTC + 1 + tcOffset1
+                bni32 = (e2 + 1) * now + eTC + 2 + tcOffset1
+
+            if eTC < int(elementsCountAroundTC * 0.5) - 1:
                 nodeIdentifiers = [bni21, bni22, bni21 + now + tcOffset, bni22 + now + tcOffset,
                                    bni31, bni32, bni31 + now + tcOffset, bni32 + now + tcOffset]
             else:
@@ -1781,66 +2052,101 @@ def createNodesAndElementsTeniaColi(region,
                                    bni22 + now + tcOffset, bni31, bni31 + now + tcOffset]
             element = mesh.createElement(elementIdentifier, elementtemplate if eTC < int(elementsCountAroundTC*0.5) - 1 else elementtemplate1)
             element.setNodesByIdentifier(eft if eTC < int(elementsCountAroundTC*0.5) - 1 else eft1, nodeIdentifiers)
-            element.merge(flatElementtemplate1 if eTC < int(elementsCountAroundTC*0.5) - 1 else flatElementtemplate3)
-            element.merge(textureElementtemplate1 if eTC < int(elementsCountAroundTC*0.5) - 1 else textureElementtemplate3)
-            element.setNodesByIdentifier(eftTexture3 if eTC < int(elementsCountAroundTC*0.5) - 1 else eftTexture5, nodeIdentifiers)
+            if xFlat and xTexture:
+                element.merge(flatElementtemplate1 if eTC < int(elementsCountAroundTC*0.5) - 1 else flatElementtemplate3)
+                element.merge(textureElementtemplate1 if eTC < int(elementsCountAroundTC*0.5) - 1 else textureElementtemplate3)
+                element.setNodesByIdentifier(eftTexture3 if eTC < int(elementsCountAroundTC*0.5) - 1 else eftTexture5, nodeIdentifiers)
             elementIdentifier = elementIdentifier + 1
-            if tcCount == 3:
+            annotationGroups = annotationGroupsAround[elementsCountAround + eTC] + annotationGroupsAlong[e2]
+            if annotationGroups:
+                allAnnotationGroups = mergeAnnotationGroups(allAnnotationGroups, annotationGroups)
                 for annotationGroup in annotationGroups:
-                    if annotationArray[elementsCountAround + eTC] == annotationGroup._name:
-                        meshGroup = annotationGroup.getMeshGroup(mesh)
-                        meshGroup.addElement(element)
+                    meshGroup = annotationGroup.getMeshGroup(mesh)
+                    meshGroup.addElement(element)
 
         for N in range(tcCount - 1):
             for eTC in range(elementsCountAroundTC):
-                bni21 = e2*now + (elementsCountThroughWall)*elementsCountAround + eTC + 1 + tcOffset1 + \
-                        int(elementsCountAroundTC*0.5) + (N+1)*elementsCountAroundHaustrum + N*elementsCountAroundTC
-                bni22 = e2*now + (elementsCountThroughWall)*elementsCountAround + eTC + 2 + tcOffset1 + \
-                        int(elementsCountAroundTC*0.5) + (N+1)*elementsCountAroundHaustrum + N*elementsCountAroundTC
-                bni31 = (e2+1)*now + eTC + 1 + tcOffset1 + int(elementsCountAroundTC*0.5) - 1 + \
-                        N*(elementsCountAroundTC-1)
-                bni32 = (e2+1)*now + eTC + 2 + tcOffset1 + int(elementsCountAroundTC*0.5) - 1 + \
-                        N*(elementsCountAroundTC-1)
+                if closedProximalEnd:
+                    bni21 = elementsCountThroughWall + 1 + (
+                                e2 - 1) * now + elementsCountThroughWall * elementsCountAround \
+                            + eTC + 1 + tcOffset1 + int(elementsCountAroundTC * 0.5) + \
+                            (N + 1) * elementsCountAroundHaustrum + N * elementsCountAroundTC
+                    bni22 = elementsCountThroughWall + 1 + (
+                                e2 - 1) * now + elementsCountThroughWall * elementsCountAround \
+                            + eTC + 2 + tcOffset1 + int(elementsCountAroundTC * 0.5) + \
+                            (N + 1) * elementsCountAroundHaustrum + N * elementsCountAroundTC
+                    bni31 = elementsCountThroughWall + 1 + e2 * now + eTC + 1 + tcOffset1 + \
+                            int(elementsCountAroundTC * 0.5) - 1 + N * (elementsCountAroundTC - 1)
+                    bni32 = elementsCountThroughWall + 1 + e2 * now + eTC + 2 + tcOffset1 + \
+                            int(elementsCountAroundTC * 0.5) - 1 + N * (elementsCountAroundTC - 1)
+                else:
+                    bni21 = e2 * now + elementsCountThroughWall * elementsCountAround + eTC + 1 + tcOffset1 + \
+                            int(elementsCountAroundTC * 0.5) + (
+                                        N + 1) * elementsCountAroundHaustrum + N * elementsCountAroundTC
+                    bni22 = e2 * now + elementsCountThroughWall * elementsCountAround + eTC + 2 + tcOffset1 + \
+                            int(elementsCountAroundTC * 0.5) + (
+                                        N + 1) * elementsCountAroundHaustrum + N * elementsCountAroundTC
+                    bni31 = (e2 + 1) * now + eTC + 1 + tcOffset1 + int(elementsCountAroundTC * 0.5) - 1 + \
+                            N * (elementsCountAroundTC - 1)
+                    bni32 = (e2 + 1) * now + eTC + 2 + tcOffset1 + int(elementsCountAroundTC * 0.5) - 1 + \
+                            N * (elementsCountAroundTC - 1)
                 if eTC == 0:
                     nodeIdentifiers = [bni21, bni22, bni21 + now + tcOffset,
                                        bni22 + now + tcOffset, bni32, bni32 + now + tcOffset]
                     element = mesh.createElement(elementIdentifier, elementtemplate2)
                     element.setNodesByIdentifier(eft2, nodeIdentifiers)
-                    element.merge(flatElementtemplate4)
-                    element.merge(textureElementtemplate4)
-                    element.setNodesByIdentifier(eftTexture6, nodeIdentifiers)
+                    if xFlat and xTexture:
+                        element.merge(flatElementtemplate4)
+                        element.merge(textureElementtemplate4)
+                        element.setNodesByIdentifier(eftTexture6, nodeIdentifiers)
                 elif eTC > 0 and eTC < elementsCountAroundTC - 1:
                     nodeIdentifiers = [bni21, bni22, bni21 + now + tcOffset, bni22 + now + tcOffset,
                                        bni31, bni32, bni31 + now + tcOffset, bni32 + now + tcOffset]
                     element = mesh.createElement(elementIdentifier, elementtemplate)
                     element.setNodesByIdentifier(eft, nodeIdentifiers)
-                    element.merge(flatElementtemplate1)
-                    element.merge(textureElementtemplate1)
-                    element.setNodesByIdentifier(eftTexture3, nodeIdentifiers)
+                    if xFlat and xTexture:
+                        element.merge(flatElementtemplate1)
+                        element.merge(textureElementtemplate1)
+                        element.setNodesByIdentifier(eftTexture3, nodeIdentifiers)
                 else:
                     nodeIdentifiers = [bni21, bni22, bni21 + now + tcOffset,
                                        bni22 + now + tcOffset, bni31, bni31 + now + tcOffset]
                     element = mesh.createElement(elementIdentifier, elementtemplate1)
                     element.setNodesByIdentifier(eft1, nodeIdentifiers)
-                    element.merge(flatElementtemplate3)
-                    element.merge(textureElementtemplate3)
-                    element.setNodesByIdentifier(eftTexture5, nodeIdentifiers)
+                    if xFlat and xTexture:
+                        element.merge(flatElementtemplate3)
+                        element.merge(textureElementtemplate3)
+                        element.setNodesByIdentifier(eftTexture5, nodeIdentifiers)
                 elementIdentifier = elementIdentifier + 1
-                if tcCount == 3:
+                annotationGroups = annotationGroupsAround[elementsCountAround + int(
+                    elementsCountAroundTC * 0.5) + N * elementsCountAroundTC + eTC] + annotationGroupsAlong[e2]
+                if annotationGroups:
+                    allAnnotationGroups = mergeAnnotationGroups(allAnnotationGroups, annotationGroups)
                     for annotationGroup in annotationGroups:
-                        if annotationArray[elementsCountAround + int(elementsCountAroundTC*0.5) +
-                                           N*elementsCountAroundTC + eTC] == annotationGroup._name:
-                            meshGroup = annotationGroup.getMeshGroup(mesh)
-                            meshGroup.addElement(element)
+                        meshGroup = annotationGroup.getMeshGroup(mesh)
+                        meshGroup.addElement(element)
 
         for eTC in range(int(elementsCountAroundTC*0.5)):
-            bni21 = e2*now + (elementsCountThroughWall)*elementsCountAround + eTC + 1 + tcOffset1 + \
-                    int(elementsCountAroundTC*0.5) + tcCount*elementsCountAroundHaustrum + \
-                    (tcCount - 1)*elementsCountAroundTC
-            bni22 = e2*now + (elementsCountThroughWall)*elementsCountAround + 1 + tcOffset1 if eTC == int(elementsCountAroundTC*0.5 - 1) else bni21 + 1
-            bni31 = (e2+1)*now + eTC + 1 + tcOffset1 + int(elementsCountAroundTC*0.5) - 1 + \
-                    (tcCount-1)*(elementsCountAroundTC-1)
-            bni32 = (e2+1)*now + 1 + tcOffset1 if eTC == int(elementsCountAroundTC*0.5 - 1) else bni31 + 1
+            if closedProximalEnd:
+                bni21 = elementsCountThroughWall + 1 + (e2 - 1) * now + elementsCountThroughWall * elementsCountAround + \
+                        eTC + 1 + tcOffset1 + int(elementsCountAroundTC * 0.5) + tcCount * elementsCountAroundHaustrum + \
+                        (tcCount - 1) * elementsCountAroundTC
+                bni22 = elementsCountThroughWall + 1 + (e2 - 1) * now + elementsCountThroughWall * elementsCountAround + \
+                        1 + tcOffset1 if eTC == int(elementsCountAroundTC * 0.5 - 1) else bni21 + 1
+                bni31 = elementsCountThroughWall + 1 + e2 * now + eTC + 1 + tcOffset1 + \
+                        int(elementsCountAroundTC * 0.5) - 1 + (tcCount - 1) * (elementsCountAroundTC - 1)
+                bni32 = elementsCountThroughWall + 1 + e2 * now + 1 + tcOffset1 if eTC == int(
+                    elementsCountAroundTC * 0.5 - 1) \
+                    else bni31 + 1
+            else:
+                bni21 = e2 * now + (elementsCountThroughWall) * elementsCountAround + eTC + 1 + tcOffset1 + \
+                        int(elementsCountAroundTC * 0.5) + tcCount * elementsCountAroundHaustrum + \
+                        (tcCount - 1) * elementsCountAroundTC
+                bni22 = e2 * now + (elementsCountThroughWall) * elementsCountAround + 1 + tcOffset1 if eTC == int(
+                    elementsCountAroundTC * 0.5 - 1) else bni21 + 1
+                bni31 = (e2 + 1) * now + eTC + 1 + tcOffset1 + int(elementsCountAroundTC * 0.5) - 1 + \
+                        (tcCount - 1) * (elementsCountAroundTC - 1)
+                bni32 = (e2 + 1) * now + 1 + tcOffset1 if eTC == int(elementsCountAroundTC * 0.5 - 1) else bni31 + 1
             if eTC > 0:
                 nodeIdentifiers = [bni21, bni22, bni21 + now + tcOffset, bni22 + now + tcOffset,
                                    bni31, bni32, bni31 + now + tcOffset, bni32 + now + tcOffset]
@@ -1850,21 +2156,25 @@ def createNodesAndElementsTeniaColi(region,
             onOpening = (eTC == int(elementsCountAroundTC*0.5 - 1))
             element = mesh.createElement(elementIdentifier, elementtemplate if eTC > 0 else elementtemplate2)
             element.setNodesByIdentifier(eft if eTC > 0 else eft2, nodeIdentifiers)
-            if eTC > 0:
-                element.merge(flatElementtemplate2 if onOpening else flatElementtemplate1)
-                element.merge(textureElementtemplate2 if onOpening else textureElementtemplate1)
-                element.setNodesByIdentifier(eftTexture4 if onOpening else eftTexture3, nodeIdentifiers)
-            else:
-                element.merge(flatElementtemplate5 if onOpening else flatElementtemplate4)
-                element.merge(textureElementtemplate5 if onOpening else textureElementtemplate4)
-                element.setNodesByIdentifier(eftTexture7 if onOpening else eftTexture6, nodeIdentifiers)
+            if xFlat and xTexture:
+                if eTC > 0:
+                    element.merge(flatElementtemplate2 if onOpening else flatElementtemplate1)
+                    element.merge(textureElementtemplate2 if onOpening else textureElementtemplate1)
+                    element.setNodesByIdentifier(eftTexture4 if onOpening else eftTexture3, nodeIdentifiers)
+                else:
+                    element.merge(flatElementtemplate5 if onOpening else flatElementtemplate4)
+                    element.merge(textureElementtemplate5 if onOpening else textureElementtemplate4)
+                    element.setNodesByIdentifier(eftTexture7 if onOpening else eftTexture6, nodeIdentifiers)
             elementIdentifier = elementIdentifier + 1
-            if tcCount == 3:
+            annotationGroups = annotationGroupsAround[
+                                   elementsCountAround + int(elementsCountAroundTC * (tcCount - 0.5)) + eTC] + \
+                               annotationGroupsAlong[e2]
+            if annotationGroups:
+                allAnnotationGroups = mergeAnnotationGroups(allAnnotationGroups, annotationGroups)
                 for annotationGroup in annotationGroups:
-                    if annotationArray[elementsCountAround + int(elementsCountAroundTC*2.5) + eTC] == annotationGroup._name:
-                        meshGroup = annotationGroup.getMeshGroup(mesh)
-                        meshGroup.addElement(element)
+                    meshGroup = annotationGroup.getMeshGroup(mesh)
+                    meshGroup.addElement(element)
 
     fm.endChange()
 
-    return nodeIdentifier, elementIdentifier, annotationGroups
+    return nodeIdentifier, elementIdentifier, allAnnotationGroups

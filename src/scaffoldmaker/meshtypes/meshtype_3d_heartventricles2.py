@@ -749,10 +749,7 @@ class MeshType_3d_heartventricles2(Scaffold_base):
 
                 element = mesh.createElement(elementIdentifier, elementtemplate1)
                 result2 = element.setNodesByIdentifier(eft1, nids)
-                if eft1.getNumberOfLocalScaleFactors() > 0:
-                    result3 = element.setScaleFactors(eft1, scalefactors)
-                else:
-                    result3 = 7
+                result3 = element.setScaleFactors(eft1, scalefactors) if scalefactors else None
                 #print('create element lv', elementIdentifier, result, result2, result3, nids)
                 elementIdentifier = elementIdentifier + 1
 
@@ -847,10 +844,7 @@ class MeshType_3d_heartventricles2(Scaffold_base):
 
                 element = mesh.createElement(elementIdentifier, elementtemplate1)
                 result2 = element.setNodesByIdentifier(eft1, nids)
-                if eft1.getNumberOfLocalScaleFactors() > 0:
-                    result3 = element.setScaleFactors(eft1, scalefactors)
-                else:
-                    result3 = 7
+                result3 = element.setScaleFactors(eft1, scalefactors) if scalefactors else None
                 #print('create element rv', elementIdentifier, result, result2, result3, nids)
                 elementIdentifier = elementIdentifier + 1
 

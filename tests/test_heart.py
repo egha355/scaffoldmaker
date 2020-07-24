@@ -1,6 +1,7 @@
 import unittest
 import copy
 from opencmiss.utils.zinc.finiteelement import evaluateFieldNodesetRange, findNodeWithName
+from opencmiss.utils.zinc.general import ChangeManager
 from opencmiss.zinc.context import Context
 from opencmiss.zinc.field import Field
 from opencmiss.zinc.result import RESULT_OK
@@ -43,11 +44,29 @@ class HeartScaffoldTestCase(unittest.TestCase):
         datapoints = fieldmodule.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_DATAPOINTS)
         self.assertEqual(0, datapoints.getSize())
 
+        # check coordinates range, epicardium surface area and volume
         coordinates = fieldmodule.findFieldByName("coordinates").castFiniteElement()
         self.assertTrue(coordinates.isValid())
         minimums, maximums = evaluateFieldNodesetRange(coordinates, nodes)
-        assertAlmostEqualList(self, minimums, [ -50.7876375290527, -57.76590573823474, -91.6 ], 1.0E-6)
-        assertAlmostEqualList(self, maximums, [ 43.81084359764995, 39.03925080604259, 40.71693637558552 ], 1.0E-6)
+        assertAlmostEqualList(self, minimums, [ -50.7876375290527, -57.76496144495844, -91.6 ], 1.0E-6)
+        assertAlmostEqualList(self, maximums, [ 43.810947610743156, 39.03925080604259, 40.717553621061704 ], 1.0E-6)
+        with ChangeManager(fieldmodule):
+            one = fieldmodule.createFieldConstant(1.0)
+            epicardiumGroup = fieldmodule.findFieldByName('epicardium').castGroup()
+            self.assertTrue(epicardiumGroup.isValid())
+            epicardiumMeshGroup = epicardiumGroup.getFieldElementGroup(mesh2d).getMeshGroup()
+            self.assertTrue(epicardiumMeshGroup.isValid())
+            surfaceAreaField = fieldmodule.createFieldMeshIntegral(one, coordinates, epicardiumMeshGroup)
+            surfaceAreaField.setNumbersOfPoints(4)
+            volumeField = fieldmodule.createFieldMeshIntegral(one, coordinates, mesh3d)
+            volumeField.setNumbersOfPoints(3)
+        fieldcache = fieldmodule.createFieldcache()
+        result, surfaceArea = surfaceAreaField.evaluateReal(fieldcache, 1)
+        self.assertEqual(result, RESULT_OK)
+        self.assertAlmostEqual(surfaceArea, 36545.32654122452, delta=1.0E-3)
+        result, volume = volumeField.evaluateReal(fieldcache, 1)
+        self.assertEqual(result, RESULT_OK)
+        self.assertAlmostEqual(volume, 222019.91858237237, delta=1.0E-3)
 
         # check some annotationGroups:
         expectedSizes3d = {

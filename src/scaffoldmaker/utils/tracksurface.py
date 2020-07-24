@@ -4,6 +4,7 @@ Utility class for representing surfaces on which features can be located.
 
 from __future__ import division
 import copy
+from enum import Enum
 import math
 from scaffoldmaker.utils import interpolation as interp
 from scaffoldmaker.utils import vector
@@ -17,7 +18,7 @@ class TrackSurface:
     square elements with bicubic Hermite interpolation but zero cross derivatives.
     '''
 
-    def __init__(self, elementsCount1, elementsCount2, nx, nd1, nd2):
+    def __init__(self, elementsCount1, elementsCount2, nx, nd1, nd2, loop1 = False):
         '''
         Creates a TrackSurface with a lattice of elementsCount1*elementsCount2
         elements, with nodes and elements varying across direction 1 fastest.
@@ -25,12 +26,34 @@ class TrackSurface:
         :param nx, nd1, nd2: List of (elementsCount2 + 1)*(elementsCount1 + 1) node
         coordinates, derivatives 1 and derivatives 2. Cross derivatives are zero.
         All coordinates are 3 component.
+        :param loop1: Set to True if loops back to start in direction 1. Means:
+        - one fewer node supplied around
+        - all nodes added twice plus first node a third time
+        - twice as many elements
+        - valid proportions are from 0.0 to 2.0.
         '''
         self.elementsCount1 = elementsCount1
         self.elementsCount2 = elementsCount2
-        self.nx = nx
-        self.nd1 = nd1
-        self.nd2 = nd2
+        self.nx  = []
+        self.nd1 = []
+        self.nd2 = []
+        if loop1:
+            n = 0
+            for n2 in range(elementsCount2 + 1):
+                nLimit = n + elementsCount1
+                rx  = nx [n:nLimit]
+                rd1 = nd1[n:nLimit]
+                rd2 = nd2[n:nLimit]
+                self.nx  += rx  + rx  + [ rx [0] ]
+                self.nd1 += rd1 + rd1 + [ rd1[0] ]
+                self.nd2 += rd2 + rd2 + [ rd2[0] ]
+                n += elementsCount1
+            self.elementsCount1 *= 2
+        else:
+            self.nx  += nx
+            self.nd1 += nd1
+            self.nd2 += nd2
+        self.loop1 = loop1
 
     def createMirrorX(self):
         '''
@@ -41,7 +64,7 @@ class TrackSurface:
         nx  = []
         nd1 = []
         nd2 = []
-        nodesCount1 = self.elementsCount1 + 1
+        nodesCount1 = self.elementsCount1 + (0 if self.loop1 else 1)
         nodesCount2 = self.elementsCount2 + 1
         for n2 in range(nodesCount2):
             for n1 in range(nodesCount1):
@@ -52,18 +75,20 @@ class TrackSurface:
                 nx .append([ -ox [0],  ox [1],  ox [2] ])
                 nd1.append([  od1[0], -od1[1], -od1[2] ])
                 nd2.append([ -od2[0],  od2[1],  od2[2] ])
-        return TrackSurface(self.elementsCount1, self.elementsCount2, nx, nd1, nd2)
+        return TrackSurface(self.elementsCount1, self.elementsCount2, nx, nd1, nd2, loop1 = self.loop1)
 
     def createPositionProportion(self, proportion1, proportion2):
         '''
         Return position on surface for proportions across directions 1 and 2.
         :param proportion1, proportion2: Proportions across directions 1 and 2,
-        each varying from 0.0 to 1.0, with elements equal sized.
+        each varying from 0.0 to 1.0 (or 2.0 if loop), with elements equal sized.
         :return: TrackSurfacePosition
         '''
-        assert (proportion1 >= 0.0) and (proportion1 <= 1.0) and (proportion2 >= 0.0) and (proportion2 <= 1.0), \
-            'createPositionProportion:  Proportion out of range'
-        pe1 = proportion1*self.elementsCount1
+        maxProportion1 = 2.0 if self.loop1 else 1.0
+        assert (proportion1 >= 0.0) and (proportion1 <= maxProportion1), 'createPositionProportion:  Proportion 1 (' + str(proportion1) + ') out of range'
+        assert (proportion2 >= 0.0) and (proportion2 <= 1.0), 'createPositionProportion:  Proportion 2 (' + str(proportion2) + ') out of range'
+
+        pe1 = (proportion1/maxProportion1)*self.elementsCount1
         if pe1 < self.elementsCount1:
             e1 = int(pe1)
             xi1 = pe1 - e1
@@ -84,7 +109,8 @@ class TrackSurface:
         From a position on this track surface, return proportions.
         :return: proportion1, proportion2
         '''
-        return [ (position.e1 + position.xi1)/self.elementsCount1, (position.e2 + position.xi2)/self.elementsCount2 ]
+        maxProportion1 = 2.0 if self.loop1 else 1.0
+        return [ maxProportion1*(position.e1 + position.xi1)/self.elementsCount1, (position.e2 + position.xi2)/self.elementsCount2 ]
 
     def evaluateCoordinates(self, position, derivatives = False):
         '''
@@ -137,8 +163,15 @@ class TrackSurface:
             derivative2.append(d2)
         return coordinates, derivative1, derivative2
 
+    class HermiteCurveMode(Enum):
+        SMOOTH = 1    # smooth variation of element size between end derivatives
+        TRANSITION_END = 2  # transition from start derivative then even size
+        TRANSITION_START = 3  # even size then transition to end derivative
+        TRANSITION_START_AND_END = 3  # transition to/from start and end derivatives and even size in between
+        UNIFORM_SIZE = 4  # regardless of initial derivatives, sample in even sizes
+
     def createHermiteCurvePoints(self, aProportion1, aProportion2, bProportion1, bProportion2, elementsCount,
-            derivativeStart = None, derivativeEnd = None):
+            derivativeStart = None, derivativeEnd = None, curveMode = HermiteCurveMode.SMOOTH):
         '''
         Create hermite curve points between two points a and b on the surface, each defined
         by their proportions over the surface in directions 1 and 2.
@@ -156,13 +189,14 @@ class TrackSurface:
             _, sd1, sd2 = self.evaluateCoordinates(position, derivatives = True)
             delta_xi1, delta_xi2 = calculate_surface_delta_xi(sd1, sd2, derivativeStart)
             dp1Start = delta_xi1/self.elementsCount1
+            if self.loop1:
+                dp1Start *= 2.0
             dp2Start = delta_xi2/self.elementsCount2
             derivativeMagnitudeStart = math.sqrt(dp1Start*dp1Start + dp2Start*dp2Start)
             dp1Start *= elementsCount
             dp2Start *= elementsCount
             #print('start delta_xi1', delta_xi1, 'delta_xi2', delta_xi2)
             #print('dp1Start', dp1Start, 'dp2Start', dp2Start)
-            #print('addLengthStart', addLengthStart, 'lengthFractionStart', lengthFractionStart)
         if derivativeEnd:
             position = self.createPositionProportion(bProportion1, bProportion2)
             _, sd1, sd2 = self.evaluateCoordinates(position, derivatives = True)
@@ -171,10 +205,11 @@ class TrackSurface:
             dp2End = delta_xi2/self.elementsCount2
             derivativeMagnitudeEnd = math.sqrt(dp1End*dp1End + dp2End*dp2End)
             dp1End *= elementsCount
+            if self.loop1:
+                dp1End *= 2.0
             dp2End *= elementsCount
             #print('end delta_xi1', delta_xi1, 'delta_xi2', delta_xi2)
             #print('dp1End', dp1End, 'dp2End', dp2End)
-            #print('addLengthEnd', addLengthEnd, 'lengthFractionEnd', lengthFractionEnd)
         if not derivativeStart:
             if derivativeEnd:
                 dp1Start, dp2Start = interp.interpolateLagrangeHermiteDerivative([ aProportion1, aProportion2 ], [ bProportion1, bProportion2 ], [ dp1End, dp2End ], 0.0)
@@ -184,13 +219,30 @@ class TrackSurface:
             derivativeMagnitudeStart = math.sqrt(dp1Start*dp1Start + dp2Start*dp2Start)/elementsCount
         if not derivativeEnd:
             if derivativeStart:
-                dp1End, dp2End = interp.interpolateHermiteLagrangeDerivative([ aProportion1, aProportion2 ], [ dp1Start, dp2Start ], [ bProportion1, bProportion2 ], 0.0)
+                dp1End, dp2End = interp.interpolateHermiteLagrangeDerivative([ aProportion1, aProportion2 ], [ dp1Start, dp2Start ], [ bProportion1, bProportion2 ], 1.0)
             else:
                 dp1End = bProportion1 - aProportion1
                 dp2End = bProportion2 - aProportion2
             derivativeMagnitudeEnd = math.sqrt(dp1End*dp1End + dp2End*dp2End)/elementsCount
+        maxProportion1 = 2.0 if self.loop1 else 1.0
+        #print('derivativeMagnitudeStart', derivativeMagnitudeStart, 'derivativeMagnitudeEnd', derivativeMagnitudeEnd)
         proportions, dproportions = interp.sampleCubicHermiteCurvesSmooth([ [ aProportion1, aProportion2 ], [ bProportion1, bProportion2 ] ], \
             [ [ dp1Start, dp2Start ], [ dp1End, dp2End ] ], elementsCount, derivativeMagnitudeStart, derivativeMagnitudeEnd)[0:2]
+        if curveMode != self.HermiteCurveMode.SMOOTH:
+            if derivativeStart and (curveMode in [self.HermiteCurveMode.TRANSITION_START, self.HermiteCurveMode.TRANSITION_START_AND_END]):
+                addLengthStart = 0.5*derivativeMagnitudeStart
+                lengthFractionStart = 0.5
+            else:
+                addLengthStart = 0.0
+                lengthFractionStart = 1.0
+            if derivativeEnd and (curveMode in [self.HermiteCurveMode.TRANSITION_END, self.HermiteCurveMode.TRANSITION_START_AND_END]):
+                addLengthEnd = 0.5*derivativeMagnitudeEnd
+                lengthFractionEnd = 0.5
+            else:
+                addLengthEnd = 0.0
+                lengthFractionEnd = 1.0
+            proportions, dproportions = interp.sampleCubicHermiteCurves(proportions, dproportions, elementsCount,
+                                                                        addLengthStart, addLengthEnd, lengthFractionStart, lengthFractionEnd)[0:2]
         #print(' proportions', proportions)
         #print('dproportions', dproportions)
         nx  = []
@@ -200,7 +252,7 @@ class TrackSurface:
         for n in range(0, elementsCount + 1):
             position = self.createPositionProportion(proportions[n][0], proportions[n][1])
             x, sd1, sd2 = self.evaluateCoordinates(position, derivatives = True)
-            f1 = dproportions[n][0]*self.elementsCount1
+            f1 = dproportions[n][0]*self.elementsCount1/maxProportion1
             f2 = dproportions[n][1]*self.elementsCount2
             d1 = [ (f1*sd1[c] + f2*sd2[c]) for c in range(3) ]
             d3 = vector.crossproduct3(sd1, sd2)
@@ -215,6 +267,29 @@ class TrackSurface:
             nd3.append(d3)
         #print('createHermiteCurvePoints end \n nx', nx,'\nnd1',nd1,'\nnd2',nd2,'\nnd3',nd3)
         return nx, nd1, nd2, nd3, proportions
+
+    def resampleHermiteCurvePointsSmooth(self, nx, nd1, nd2, nd3, nProportions, derivativeMagnitudeStart=None, derivativeMagnitudeEnd=None):
+        '''
+        Call interp.sampleCubicHermiteCurvesSmooth on nx, nd1 and recalculate positions, nd2, nd3 for points.
+        :return: nx[], nd1[], nd2[], nd3[], nProportions[]
+        '''
+        elementsCount = len(nx) - 1
+        #print(nx, nd1, elementsCount, derivativeMagnitudeStart, derivativeMagnitudeEnd)
+        nx, nd1 = interp.sampleCubicHermiteCurvesSmooth(nx, nd1, elementsCount, derivativeMagnitudeStart, derivativeMagnitudeEnd)[0:2]
+        mag2 = vector.magnitude(nd2[0])
+        if mag2 > 0.0:
+            nd2[0] = vector.setMagnitude(nd2[0], vector.magnitude(nd1[0]))
+        for n in range(1, elementsCount):
+            p = self.findNearestPosition(nx[n], self.createPositionProportion(*nProportions[n]))
+            nProportions[n] = self.getProportion(p)
+            _, sd1, sd2 = self.evaluateCoordinates(p, derivatives=True)
+            _, d2, d3 = calculate_surface_axes(sd1, sd2, vector.normalise(nd1[n]))
+            nd2[n] = vector.setMagnitude(d2, vector.magnitude(nd1[n]))
+            nd3[n] = d3
+        mag2 = vector.magnitude(nd2[-1])
+        if mag2 > 0.0:
+            nd2[-1] = vector.setMagnitude(nd2[-1], vector.magnitude(nd1[-1]))
+        return nx, nd1, nd2, nd3, nProportions
 
     def findNearestPosition(self, targetx, startPosition = None):
         '''
@@ -428,10 +503,22 @@ def calculate_surface_delta_xi(d1, d2, direction):
             b[i] += dx_dxi[i][k]*direction[k]
     # 2x2 matrix inverse
     deta = a[0][0]*a[1][1] - a[0][1]*a[1][0]
-    inva = [ [ a[1][1]/deta, -a[0][1]/deta ], [ -a[1][0]/deta, a[0][0]/deta ] ]
-    delta_xi1 = inva[0][0]*b[0] + inva[0][1]*b[1]
-    delta_xi2 = inva[1][0]*b[0] + inva[1][1]*b[1]
-    delx = [ (delta_xi1*d1[c] + delta_xi2*d2[c]) for c in range(3) ]
+    if deta > 0.0:
+        inva = [ [ a[1][1]/deta, -a[0][1]/deta ], [ -a[1][0]/deta, a[0][0]/deta ] ]
+        delta_xi1 = inva[0][0]*b[0] + inva[0][1]*b[1]
+        delta_xi2 = inva[1][0]*b[0] + inva[1][1]*b[1]
+    else:
+        # at pole: assume direction is inline with d1 or d2 and other is zero
+        delta_xi2 = vector.dotproduct(d2, direction)
+        if math.fabs(delta_xi2) > 0.0:
+            delta_xi1 = 0.0
+            delta_xi2 = (1.0 if (delta_xi2 > 0.0) else -1.0)*vector.magnitude(direction)/vector.magnitude(d2)
+        else:
+            delta_xi1 = vector.dotproduct(d1, direction)
+            if math.fabs(delta_xi1) > 0.0:
+                delta_xi1 = (1.0 if (delta_xi1 > 0.0) else -1.0)*vector.magnitude(direction)/vector.magnitude(d1)
+                delta_xi2 = 0.0
+    #delx = [ (delta_xi1*d1[c] + delta_xi2*d2[c]) for c in range(3) ]
     #print('delx', delx, 'dir', direction, 'diff', vector.magnitude([ (delx[c] - direction[c]) for c in range(3) ]))
     return delta_xi1, delta_xi2
 
@@ -441,10 +528,16 @@ def calculate_surface_axes(d1, d2, direction):
     ax2 in-plane normal to a and ax3 normal to the surface plane.
     Vectors all have unit magnitude.
     '''
-    ax3 = vector.normalise(vector.crossproduct3(d1, d2))
     delta_xi1, delta_xi2 = calculate_surface_delta_xi(d1, d2, direction)
     ax1 = vector.normalise([ delta_xi1*d1[c] + delta_xi2*d2[c] for c in range(3) ])
-    ax2 = vector.normalise(vector.crossproduct3(ax3, ax1))
+    ax3 = vector.crossproduct3(d1, d2)
+    mag3 = vector.magnitude(ax3)
+    if mag3 > 0.0:
+        ax3 = [ s/mag3 for s in ax3 ]
+        ax2 = vector.normalise(vector.crossproduct3(ax3, ax1))
+    else:
+        ax3 = [ 0.0, 0.0, 0.0 ]
+        ax2 = [ 0.0, 0.0, 0.0 ]
     return ax1, ax2, ax3
 
 def increment_xi_on_square(xi1, xi2, dxi1, dxi2):

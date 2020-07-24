@@ -282,10 +282,7 @@ class MeshType_3d_heart1(Scaffold_base):
             result = elementtemplate1.defineField(coordinates, -1, eft1)
             element = mesh.createElement(elementIdentifier, elementtemplate1)
             result2 = element.setNodesByIdentifier(eft1, nids)
-            if scalefactors:
-                result3 = element.setScaleFactors(eft1, scalefactors)
-            else:
-                result3 = 7
+            result3 = element.setScaleFactors(eft1, scalefactors) if scalefactors else None
             #print('create element fibrous ring left', elementIdentifier, result, result2, result3, nids)
             elementIdentifier += 1
 
@@ -347,10 +344,7 @@ class MeshType_3d_heart1(Scaffold_base):
             result = elementtemplate1.defineField(coordinates, -1, eft1)
             element = mesh.createElement(elementIdentifier, elementtemplate1)
             result2 = element.setNodesByIdentifier(eft1, nids)
-            if scalefactors:
-                result3 = element.setScaleFactors(eft1, scalefactors)
-            else:
-                result3 = 7
+            result3 = element.setScaleFactors(eft1, scalefactors) if scalefactors else None
             #print('create element fibrous ring right', elementIdentifier, result, result2, result3, nids)
             elementIdentifier += 1
 
@@ -389,10 +383,7 @@ class MeshType_3d_heart1(Scaffold_base):
             result = elementtemplate1.defineField(coordinates, -1, eft1)
             element = mesh.createElement(elementIdentifier, elementtemplate1)
             result2 = element.setNodesByIdentifier(eft1, nids)
-            if scalefactors:
-                result3 = element.setScaleFactors(eft1, scalefactors)
-            else:
-                result3 = 7
+            result3 = element.setScaleFactors(eft1, scalefactors) if scalefactors else None
             #print('create element fibrous ring septum', elementIdentifier, result, result2, result3, nids)
             elementIdentifier += 1
 

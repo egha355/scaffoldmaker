@@ -390,7 +390,7 @@ def sampleCubicHermiteCurves(nx, nd1, elementsCountOut,
     return px, pd1, pe, pxi, psf
 
 def sampleCubicHermiteCurvesSmooth(nx, nd1, elementsCountOut,
-       derivativeMagnitudeStart, derivativeMagnitudeEnd):
+       derivativeMagnitudeStart=None, derivativeMagnitudeEnd=None):
     """
     Get smoothly spaced points and derivatives over cubic Hermite interpolated
     curves with nodes nx and derivatives nd1. The first element uses the first two nodes.
@@ -398,8 +398,9 @@ def sampleCubicHermiteCurvesSmooth(nx, nd1, elementsCountOut,
     magnitudes.
     :param nx: Coordinates of nodes along curves.
     :param nd1: Derivatives of nodes along curves.
-    :param derivativeMagnitudeStart, derivativeMagnitudeEnd: Magnitudes of start and end
-    derivatives appropriate for elementsCountOut.
+    :param derivativeMagnitudeStart, derivativeMagnitudeEnd: Optional magnitudes of start and end
+    derivatives appropriate for elementsCountOut. If unspecified these are calculated from the other
+    end or set to be equal for even spaced elements.
     :return: px[], pd1[], pe[], pxi[], psf[], where pe[] and pxi[] are lists of element indices and
     and xi locations in the 'in' elements to pass to partner interpolateSample functions. psf[] is
     a list of scale factors for converting derivatives from old to new xi coordinates: dxi(old)/dxi(new).
@@ -412,6 +413,14 @@ def sampleCubicHermiteCurvesSmooth(nx, nd1, elementsCountOut,
     for e in range(elementsCountIn):
         length += getCubicHermiteArcLength(nx[e], nd1[e], nx[e + 1], nd1[e + 1])
         lengths.append(length)
+    if derivativeMagnitudeStart and derivativeMagnitudeEnd:
+        pass
+    elif derivativeMagnitudeEnd:
+        derivativeMagnitudeStart = (2.0*length - elementsCountOut*derivativeMagnitudeEnd)/elementsCountOut
+    elif derivativeMagnitudeStart:
+        derivativeMagnitudeEnd = (2.0*length - elementsCountOut*derivativeMagnitudeStart)/elementsCountOut
+    else:
+        derivativeMagnitudeStart = derivativeMagnitudeEnd = length/elementsCountOut
     # sample over length to get distances to elements boundaries
     x1 = 0.0
     d1 = derivativeMagnitudeStart*elementsCountOut
@@ -476,9 +485,9 @@ def interpolateSampleCubicHermite(v, d, pe, pxi, psf):
     from old to new xi spacing.
     :return: List of interpolated values, list of interpolated derivatives; scalar or vector as for v, d.
     '''
-    assert (len(v) > 1) and (len(d) == len(v)), 'interpolateSampleLinear. Invalid values v, d'
+    assert (len(v) > 1) and (len(d) == len(v)), 'interpolateSampleCubicHermite. Invalid values v, d'
     valuesCountOut = len(pe)
-    assert (valuesCountOut > 0) and (len(pxi) == valuesCountOut), 'interpolateSampleLinear. Invalid element, xi'
+    assert (valuesCountOut > 0) and (len(pxi) == valuesCountOut), 'interpolateSampleCubicHermite. Invalid element, xi'
     vOut = []
     dOut = []
     if isinstance(v[0], collections.Sequence):
@@ -659,7 +668,8 @@ def smoothCubicHermiteDerivativesLine(nx, nd1,
         # start
         if not fixStartDerivative:
             if fixAllDirections or fixStartDirection:
-                md1[0] = vector.setMagnitude(lastmd1[0], 2.0*arcLengths[0] - vector.magnitude(lastmd1[1]))
+                mag = 2.0*arcLengths[0] - vector.magnitude(lastmd1[1])
+                md1[0] = vector.setMagnitude(nd1[0], mag) if (mag > 0.0) else [ 0.0, 0.0, 0.0 ]
             else:
                 md1[0] = interpolateLagrangeHermiteDerivative(nx[0], nx[1], lastmd1[1], 0.0)
         # middle
@@ -683,7 +693,8 @@ def smoothCubicHermiteDerivativesLine(nx, nd1,
         # end
         if not fixEndDerivative:
             if fixAllDirections or fixEndDirection:
-                md1[-1] = vector.setMagnitude(lastmd1[-1], 2.0*arcLengths[-1] - vector.magnitude(lastmd1[-2]))
+                mag = 2.0*arcLengths[-1] - vector.magnitude(lastmd1[-2])
+                md1[-1] = vector.setMagnitude(nd1[-1], mag) if (mag > 0.0) else [ 0.0, 0.0, 0.0 ]
             else:
                 md1[-1] = interpolateHermiteLagrangeDerivative(nx[-2], lastmd1[-2], nx[-1], 1.0)
         if equalDerivatives:
@@ -705,13 +716,13 @@ def smoothCubicHermiteDerivativesLine(nx, nd1,
                 print('smoothCubicHermiteDerivativesLine converged after iter:', iter + 1)
             return md1
 
-    max = 0.0
+    cmax = 0.0
     for n in range(nodesCount):
         for c in componentRange:
-            if math.fabs(md1[n][c] - lastmd1[n][c]) > max:
-                max = math.fabs(md1[n][c] - lastmd1[n][c])
-    closeness = max / dtol
-    print('smoothCubicHermiteDerivativesLine max iters reached:', iter + 1, ', max = ', round(closeness,2), 'x tolerance')
+            if math.fabs(md1[n][c] - lastmd1[n][c]) > cmax:
+                cmax = math.fabs(md1[n][c] - lastmd1[n][c])
+    closeness = cmax / dtol
+    print('smoothCubicHermiteDerivativesLine max iters reached:', iter + 1, ', cmax = ', round(closeness,2), 'x tolerance')
     return md1
 
 def smoothCubicHermiteDerivativesLoop(nx, nd1,
@@ -776,13 +787,13 @@ def smoothCubicHermiteDerivativesLoop(nx, nd1,
                 print('smoothCubicHermiteDerivativesLoop converged after iter:',iter)
             return md1
 
-    max = 0.0
+    cmax = 0.0
     for n in range(nodesCount):
         for c in componentRange:
-            if math.fabs(md1[n][c] - lastmd1[n][c]) > max:
-                max = math.fabs(md1[n][c] - lastmd1[n][c])
-    closeness = max / dtol
-    print('smoothCubicHermiteDerivativesLoop max iters reached:', iter + 1, ', max = ', round(closeness,2) , 'x tolerance')
+            if math.fabs(md1[n][c] - lastmd1[n][c]) > cmax:
+                cmax = math.fabs(md1[n][c] - lastmd1[n][c])
+    closeness = cmax / dtol
+    print('smoothCubicHermiteDerivativesLoop max iters reached:', iter + 1, ', cmax = ', round(closeness,2) , 'x tolerance')
     return md1
 
 def getDoubleCubicHermiteCurvesMidDerivative(ax, ad1, mx, bx, bd1):

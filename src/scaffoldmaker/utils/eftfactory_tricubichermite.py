@@ -1323,10 +1323,7 @@ class eftfactory_tricubichermite:
             element = self._mesh.createElement(elementIdentifier, elementtemplate1)
             #print('inlet element', element.isValid(), elementIdentifier, elementtemplate1.isValid())
             result2 = element.setNodesByIdentifier(eft1, nids)
-            if eft1.getNumberOfLocalScaleFactors() == 1:
-                result3 = element.setScaleFactors(eft1, [ -1.0 ])
-            else:
-                result3 = 7
+            result3 = element.setScaleFactors(eft1, [ -1.0 ]) if (eft1.getNumberOfLocalScaleFactors() == 1) else None
             #print('create element inlet4', element.isValid(), elementIdentifier, result2, result3, nids)
             elementIdentifier += 1
 

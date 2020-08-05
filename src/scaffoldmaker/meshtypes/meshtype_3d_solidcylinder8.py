@@ -231,7 +231,7 @@ class MeshType_3d_solidcylinder8(Scaffold_base):
 
         tShield.getTriplePoints(n3=1)
         n1b = 1
-        m1a = 8
+        m1a = tShield.elementsCountAcross
         m1b = m1a - 1
         m1c = m1a - 2
         n2b = 1

@@ -26,7 +26,7 @@ class MeshType_3d_solidcylinder3(Scaffold_base):
     @staticmethod
     def getDefaultOptions(parameterSetName='Default'):
         return {
-            'Number of elements around' : 8,
+            'Number of elements around' : 16,
             'Number of elements along' : 1,
             'Number of elements through wall' : 1,
             'Use cross derivatives' : False,
@@ -60,7 +60,7 @@ class MeshType_3d_solidcylinder3(Scaffold_base):
             if options[key] < 1:
                 options[key] = 1
         if (options['Number of elements through wall'] < 2) :
-            options['Number of elements around'] = 2
+            options['Number of elements through wall'] = 1
         if (options['Number of elements around'] < 2) :
             options['Number of elements around'] = 2
 
@@ -149,20 +149,21 @@ class MeshType_3d_solidcylinder3(Scaffold_base):
         majorRadius = 2
         minorRadius = 0.5
         perimeter = geometry.getApproximateEllipsePerimeter(majorRadius, minorRadius)
-        # arcLengthPerElementAround = perimeter/elementsCountAround
+        arcLengthPerElementAround = perimeter/elementsCountAround
+        radiansAround = 0.0
         for nz in range(elementsCountAlong+1):
             x[2] = nz * 1.0/elementsCountAlong
             for nr in range(elementsCountThroughWall):
                 for nt in range(elementsCountAround):
-                    radiansAround = nt * radiansPerElementAround
-                    # radiansAround = geometry.updateEllipseAngleByArcLength(majorRadius, minorRadius, 0, nt*arcLengthPerElementAround)
+                    # radiansAround = nt * radiansPerElementAround
+                    radiansAround = geometry.updateEllipseAngleByArcLength(majorRadius, minorRadius, radiansAround, arcLengthPerElementAround)
                     cosRadiansAround = math.cos(radiansAround)
                     sinRadiansAround = math.sin(radiansAround)
                     x[0] = majorRadius*cosRadiansAround
                     x[1] = minorRadius*sinRadiansAround
-                    # DTS = 1.0/math.sqrt(majorRadius/minorRadius*x[1]*majorRadius/minorRadius*x[1]+minorRadius/majorRadius*x[0]*minorRadius/majorRadius*x[0])
-                    # dx_ds1 = [-majorRadius*sinRadiansAround*DTS*arcLengthPerElementAround, minorRadius*cosRadiansAround*DTS*arcLengthPerElementAround, 0.0]
-                    dx_ds1 = [-majorRadius*sinRadiansAround*radiansPerElementAround, minorRadius*cosRadiansAround*radiansPerElementAround, 0.0]
+                    DTS = 1.0/math.sqrt(majorRadius/minorRadius*x[1]*majorRadius/minorRadius*x[1]+minorRadius/majorRadius*x[0]*minorRadius/majorRadius*x[0])
+                    dx_ds1 = [-majorRadius*sinRadiansAround*DTS*arcLengthPerElementAround, minorRadius*cosRadiansAround*DTS*arcLengthPerElementAround, 0.0]
+                    # dx_ds1 = [-majorRadius*sinRadiansAround*radiansPerElementAround, minorRadius*cosRadiansAround*radiansPerElementAround, 0.0]
                     dx_ds3 = [(radius-dist)*cosRadiansAround, (radius-dist)*sinRadiansAround, 0.0]
                     node = nodes.createNode(nodeIdentifier, nodetemplate)
                     cache.setNode(node)

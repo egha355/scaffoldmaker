@@ -65,15 +65,11 @@ class MeshType_3d_solidcylinder8(Scaffold_base):
     @staticmethod
     def checkOptions(options):
         for key in [
-            'Number of elements along',
-            'Number of elements through wall',
-            'Refine number of elements around',
-            'Refine number of elements along',
-            'Refine number of elements through wall']:
+            'Number of elements across torso']:
             if options[key] < 1:
                 options[key] = 1
-        if (options['Number of elements around'] < 2) :
-            options['Number of elements around'] = 2
+        if (options['Number of elements across torso'] < 2) :
+            options['Number of elements across torso'] = 8
 
     @staticmethod
     def createEllipsePoints(centre, majorAxis, minorAxis, elementsCountAround, height):
@@ -130,8 +126,6 @@ class MeshType_3d_solidcylinder8(Scaffold_base):
         elementsCountUpRegular = elementsCountUp - 2 - elementsCountRim
         elementsCountAcrossNonRim = elementsCountAcross - 2*elementsCountRim
         elementsCountAround = 2 * elementsCountUpRegular + elementsCountAcrossNonRim
-        elementsCountAlong = options['Number of elements along']
-        elementsCountThroughWall = options['Number of elements through wall']
         useCrossDerivatives = options['Use cross derivatives']
 
 

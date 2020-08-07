@@ -38,6 +38,7 @@ class MeshType_3d_solidcylinder8(Scaffold_base):
             'Height' : 5.0,
             'Number of elements across torso' : 8,
             'Number of elements up torso' : 5,
+            'Number of elements along torso' : 1,
             'Number of elements for rim' : 0,
             'Use cross derivatives' : False,
             'Refine' : False,
@@ -54,6 +55,7 @@ class MeshType_3d_solidcylinder8(Scaffold_base):
             'Height',
             'Number of elements across torso',
             'Number of elements up torso',
+            'Number of elements along torso',
             'Number of elements for rim',
             'Use cross derivatives',
             'Refine',
@@ -65,7 +67,8 @@ class MeshType_3d_solidcylinder8(Scaffold_base):
     @staticmethod
     def checkOptions(options):
         for key in [
-            'Number of elements across torso']:
+            'Number of elements across torso',
+            'Number of elements along torso']:
             if options[key] < 1:
                 options[key] = 1
         if (options['Number of elements across torso'] < 2) :
@@ -123,6 +126,7 @@ class MeshType_3d_solidcylinder8(Scaffold_base):
         elementsCountAcross = options['Number of elements across torso']
         elementsCountUp = options['Number of elements up torso']
         elementsCountRim = options['Number of elements for rim']
+        elementsCountAlong = options['Number of elements along torso']
         elementsCountUpRegular = elementsCountUp - 2 - elementsCountRim
         elementsCountAcrossNonRim = elementsCountAcross - 2*elementsCountRim
         elementsCountAround = 2 * elementsCountUpRegular + elementsCountAcrossNonRim
@@ -149,10 +153,11 @@ class MeshType_3d_solidcylinder8(Scaffold_base):
 
 
         # The bottom curve node coordinates and derivatives
-        tShield = ShieldMesh( elementsCountAcross, elementsCountUp, elementsCountRim, None)
+        tShield = ShieldMesh( elementsCountAcross, elementsCountUp, elementsCountRim, None, elementsCountAlong)
 
         tix = []
         tox = []
+        tnx = []
         tid1 = []
         tod1 = []
         tid2 = []
@@ -166,8 +171,6 @@ class MeshType_3d_solidcylinder8(Scaffold_base):
             tid3.append([height*normalToEllipse[c] for c in range(3)])
             left, right = (n<elementsCountAround//2), (n>=elementsCountAround//2)
             gn += 2*(right-left)+(gn==0)
-            tox.append(
-                [ (tix[n][c] + height * normalToEllipse[c]) for c in range(3) ])
 
             tod3.append(tid3[n])
             tid1.append(
@@ -176,17 +179,24 @@ class MeshType_3d_solidcylinder8(Scaffold_base):
             tod2.append(tid2[n])
             tod1.append(tid1[n])
 
+        for n3 in range(1,tShield.elementsCountThroughWall+1):
+            tox = []
+            for n in range(elementsCountAround + 1):
+                tox.append(
+                    [ (tix[n][c] + n3*height * normalToEllipse[c]) for c in range(3) ])
+            tnx.append(tox)
+
         btx  = tShield.px
         btd1 = tShield.pd1
         btd2 = tShield.pd2
         btd3 = tShield.pd3
         for n in range(tShield.elementsCountAroundFull + 1):
             n1, n2 = tShield.convertRimIndex(n)
-            for n3 in range(2):
+            for n3 in range(tShield.elementsCountThroughWall+1):
                 if n3 == 0:
                     tx, td1, td2, td3 = tix, tid1, tid2, tid3
                 else:
-                    tx, td1, td2, td3 = tox, tod1, tod2, tod3
+                    tx, td1, td2, td3 = tnx[n3-1], tod1, tod2, tod3
                 btx[n3][n2][n1] = tx[n]
                 if n2 > tShield.elementsCountRim:  # regular rows
                     if n1 < tShield.elementsCountAcross:
@@ -203,27 +213,27 @@ class MeshType_3d_solidcylinder8(Scaffold_base):
 
         # across regular rows of Shield: get d1, initial d2
         for n2 in range(tShield.elementsCountRim + 2, tShield.elementsCountUp + 1):
-            btx[1][n2], btd1[1][n2], pe, pxi, psf = sampleCubicHermiteCurves(
-                [ btx[1][n2][0], btx[1][n2][-1] ], [ btd1[1][n2][0], btd1[1][n2][-1] ], tShield.elementsCountAcross,
+            btx[0][n2], btd1[0][n2], pe, pxi, psf = sampleCubicHermiteCurves(
+                [ btx[0][n2][0], btx[0][n2][-1] ], [ btd1[0][n2][0], btd1[0][n2][-1] ], tShield.elementsCountAcross,
                 lengthFractionStart=0.667, lengthFractionEnd=0.667, arcLengthDerivatives = True)
-            btd2[1][n2] = interpolateSampleCubicHermite([btd2[1][n2][0], btd2[1][n2][-1]], [[0.0, 0.0, 0.0]] * 2, pe, pxi, psf)[0]
+            btd2[0][n2] = interpolateSampleCubicHermite([btd2[0][n2][0], btd2[0][n2][-1]], [[0.0, 0.0, 0.0]] * 2, pe, pxi, psf)[0]
 
         # up regular columns of shield: get d2, initial d1 below regular rows
         for n1 in range(2, tShield.elementsCountAcross - 1):
             tx, td2, pe, pxi, psf = sampleCubicHermiteCurves(
-                [ btx[1][0][n1], btx[1][2][n1] ], [ btd2[1][0][n1], btd2[1][2][n1] ], 2, lengthFractionStart=0.667, arcLengthDerivatives = True)  # GRC fudge factor rvSulcusEdgeFactor
+                [ btx[0][0][n1], btx[0][2][n1] ], [ btd2[0][0][n1], btd2[0][2][n1] ], 2, lengthFractionStart=0.667, arcLengthDerivatives = True)  # GRC fudge factor rvSulcusEdgeFactor
             for n2 in range(3, tShield.elementsCountUp + 1):
-                tx .append(btx [1][n2][n1])
-                td2.append(btd2[1][n2][n1])
+                tx .append(btx [0][n2][n1])
+                td2.append(btd2[0][n2][n1])
             td2 = smoothCubicHermiteDerivativesLine(tx, td2, fixStartDirection = True)
-            td1 = interpolateSampleCubicHermite([ btd1[1][0][n1], btd1[1][2][n1] ], [ [ 0.0, 0.0, 0.0 ] ]*2, pe, pxi, psf)[0]
+            td1 = interpolateSampleCubicHermite([ btd1[0][0][n1], btd1[0][2][n1] ], [ [ 0.0, 0.0, 0.0 ] ]*2, pe, pxi, psf)[0]
             for n2 in range(tShield.elementsCountUp + 1):
                 if n2 < 2:
-                    btx [1][n2][n1] = tx [n2]
-                    btd1[1][n2][n1] = td1[n2]
-                btd2[1][n2][n1] = td2[n2]
+                    btx [0][n2][n1] = tx [n2]
+                    btd1[0][n2][n1] = td1[n2]
+                btd2[0][n2][n1] = td2[n2]
 
-        tShield.getTriplePoints(n3=1)
+        tShield.getTriplePoints(n3=0)
         n1b = 1
         m1a = tShield.elementsCountAcross
         m1b = m1a - 1
@@ -231,57 +241,70 @@ class MeshType_3d_solidcylinder8(Scaffold_base):
         n2b = 1
 
         # smooth RV freewall row 1
-        btd1[1][n2b][n1b:m1a] = smoothCubicHermiteDerivativesLine(btx[1][n2b][n1b:m1a], btd1[1][n2b][n1b:m1a])
+        btd1[0][n2b][n1b:m1a] = smoothCubicHermiteDerivativesLine(btx[0][n2b][n1b:m1a], btd1[0][n2b][n1b:m1a])
 
         # smooth RV columns 1, -2
         for n1 in [ 1, -2 ]:
             tx = []
             td2 = []
             for n2 in range(1, tShield.elementsCountUp + 1):
-                tx .append(btx [1][n2][n1])
-                td2.append(btd2[1][n2][n1])
+                tx .append(btx [0][n2][n1])
+                td2.append(btd2[0][n2][n1])
             td2 = smoothCubicHermiteDerivativesLine(tx, td2)
             for n in range(tShield.elementsCountUp):
-                btd2[1][n + 1][n1] = td2[n]
+                btd2[0][n + 1][n1] = td2[n]
 
-        tShield.smoothDerivativesToTriplePoints(n3=1, fixAllDirections=True)
+        tShield.smoothDerivativesToTriplePoints(n3=0, fixAllDirections=True)
 
         # get outer d3 and inner x, d3
         for n2 in range(tShield.elementsCountUp + 1):
             for n1 in range(tShield.elementsCountAcross + 1):
-                if btd1[1][n2][n1]:
-                    btd3[0][n2][n1] = btd3[1][n2][n1] = vector.setMagnitude(vector.crossproduct3(btd1[1][n2][n1], btd2[1][n2][n1]), height)
-                    btx [0][n2][n1] = [ (btx [1][n2][n1][c] - btd3[1][n2][n1][c]) for c in range(3) ]
+                if btd1[0][n2][n1]:
+                    btd3[0][n2][n1] = btd3[1][n2][n1] = vector.setMagnitude(vector.crossproduct3(btd1[0][n2][n1], btd2[0][n2][n1]), height)
+                    btx [1][n2][n1] = [ (btx [0][n2][n1][c] + btd3[0][n2][n1][c]) for c in range(3) ]
 
         # get inner d1, d2
         # row 1
-        btd1[0][n2b][n1b:m1a] = smoothCubicHermiteDerivativesLine(btx[0][n2b][n1b:m1a], btd1[1][n2b][n1b:m1a], fixAllDirections = True)
+        btd1[1][n2b][n1b:m1a] = smoothCubicHermiteDerivativesLine(btx[1][n2b][n1b:m1a], btd1[0][n2b][n1b:m1a], fixAllDirections = True)
         # regular rows 2+
         for n2 in range(2, tShield.elementsCountUp + 1):
-            btd1[0][n2] = smoothCubicHermiteDerivativesLine(btx[0][n2], btd1[1][n2], fixAllDirections = True)
+            btd1[1][n2] = smoothCubicHermiteDerivativesLine(btx[1][n2], btd1[0][n2], fixAllDirections = True)
         # columns
         for n1 in range(n1b, m1a):
             startn2 = 1 if (n1 in [n1b, m1b]) else 0
             tx  = []
             td2 = []
             for n2 in range(startn2, tShield.elementsCountUp + 1):
-                tx .append(btx [0][n2][n1])
-                td2.append(btd2[1][n2][n1])
+                tx .append(btx [1][n2][n1])
+                td2.append(btd2[0][n2][n1])
             td2 = smoothCubicHermiteDerivativesLine(tx, td2, fixAllDirections = True)
             for n2 in range(startn2, tShield.elementsCountUp + 1):
-                btd2[0][n2][n1] = td2[n2 - startn2]
+                btd2[1][n2][n1] = td2[n2 - startn2]
 
         # fix inner derivatives leading to triple points
         # first copy d2 from outer to inner
         for n1 in [ n1b, m1b ]:
             for n2 in range(0, n2b):
-                btd2[0][n2][n1] = btd2[1][n2][n1]
-        tShield.smoothDerivativesToTriplePoints(n3=0, fixAllDirections=True)
+                btd2[1][n2][n1] = btd2[0][n2][n1]
+        tShield.smoothDerivativesToTriplePoints(n3=1, fixAllDirections=True)
 
-        btd2[0][0][1] = smoothCubicHermiteDerivativesLine([ btx[0][0][1], btx[0][1][1] ], [ btd2[0][0][1], [ (btd1[0][1][1][c] + btd2[0][1][1][c]) for c in range(3) ] ],
+        btd2[1][0][1] = smoothCubicHermiteDerivativesLine([ btx[1][0][1], btx[1][1][1] ], [ btd2[1][0][1], [ (btd1[1][1][1][c] + btd2[1][1][1][c]) for c in range(3) ] ],
                                                           fixEndDerivative = True, fixStartDirection = True)[0]
-        btd2[0][0][m1b] = smoothCubicHermiteDerivativesLine([ btx[0][0][m1b], btx[0][1][m1b] ], [ btd2[0][0][m1b], [ (-btd1[0][1][m1b][c] + btd2[0][1][m1b][c]) for c in range(3) ] ],
+        btd2[1][0][m1b] = smoothCubicHermiteDerivativesLine([ btx[1][0][m1b], btx[1][1][m1b] ], [ btd2[1][0][m1b], [ (-btd1[1][1][m1b][c] + btd2[1][1][m1b][c]) for c in range(3) ] ],
                                                           fixEndDerivative = True, fixStartDirection = True)[0]
+
+
+        temx = []
+        if tShield.elementsCountThroughWall>1:
+            for n2 in range(tShield.elementsCountUp + 1):
+                for n3 in range(2, tShield.elementsCountThroughWall + 1):
+                    for n1 in range(tShield.elementsCountAcross + 1):
+                        if tShield.px[0][n2][n1]:
+                            temx = [tShield.px[0][n2][n1][c] + n3*height*normalToEllipse[c] for c in range(3)]
+                            tShield.px[n3][n2][n1]=temx
+                            tShield.pd1[n3][n2][n1]=tShield.pd1[0][n2][n1]
+                            tShield.pd2[n3][n2][n1]=tShield.pd2[0][n2][n1]
+                            tShield.pd3[n3][n2][n1]=tShield.pd3[0][n2][n1]
 
         #################
         # Create nodes

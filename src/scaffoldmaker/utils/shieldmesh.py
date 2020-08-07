@@ -21,7 +21,7 @@ class ShieldMesh:
     Shield mesh generator. Has one element through thickness.
     '''
 
-    def __init__(self, elementsCountAcross, elementsCountUp, elementsCountRim, trackSurface : TrackSurface=None):
+    def __init__(self, elementsCountAcross, elementsCountUp, elementsCountRim, trackSurface : TrackSurface=None, elementsCountThroughWall=1):
         '''
         Data structure for defining a shield-shaped mesh which is flat on the top and rounded around the bottom.
         It is represented as a regular box of elementsCountAcross x elementsCountUp
@@ -49,21 +49,23 @@ class ShieldMesh:
         :param trackSurface: Optional trackSurface to store or restrict points to.
         '''
         assert elementsCountRim >= 0
+        assert elementsCountThroughWall >= 1
         assert elementsCountAcross >= (elementsCountRim + 4)
         assert elementsCountUp >= (elementsCountRim + 2)
         self.elementsCountAcross = elementsCountAcross
         self.elementsCountUp = elementsCountUp
         self.elementsCountRim = elementsCountRim
+        self.elementsCountThroughWall = elementsCountThroughWall
         self.elementsCountUpRegular = elementsCountUp - 2 - elementsCountRim
         elementsCountAcrossNonRim = self.elementsCountAcross - 2*elementsCountRim
         self.elementsCountAroundFull = 2*self.elementsCountUpRegular + elementsCountAcrossNonRim
         self.trackSurface = trackSurface
-        self.px  = [ [], [] ]
-        self.pd1 = [ [], [] ]
-        self.pd2 = [ [], [] ]
-        self.pd3 = [ [], [] ]
-        self.nodeId = [ [], [] ]
-        for n3 in range(2):
+        self.px  = [ [] for _ in range(elementsCountThroughWall+1) ]
+        self.pd1 = [ [] for _ in range(elementsCountThroughWall+1) ]
+        self.pd2 = [ [] for _ in range(elementsCountThroughWall+1) ]
+        self.pd3 = [ [] for _ in range(elementsCountThroughWall+1) ]
+        self.nodeId = [ [] for _ in range(elementsCountThroughWall+1) ]
+        for n3 in range(elementsCountThroughWall+1):
             for n2 in range(elementsCountUp + 1):
                 for p in [ self.px[n3], self.pd1[n3], self.pd2[n3], self.pd3[n3], self.nodeId[n3] ]:
                     p.append([ None ]*(elementsCountAcross + 1))
@@ -244,7 +246,7 @@ class ShieldMesh:
         #    print(n2, s, n2 - self.elementsCountUp - 1)
 
         for n2 in range(self.elementsCountUp + 1):
-            for n3 in range(2):
+            for n3 in range(self.elementsCountThroughWall+1):
                 for n1 in range(self.elementsCountAcross + 1):
                     if self.px[n3][n2][n1]:
                         node = nodes.createNode(nodeIdentifier, nodetemplate)
@@ -289,74 +291,75 @@ class ShieldMesh:
         e2a = self.elementsCountRim
         e2b = self.elementsCountRim + 1
         e2c = self.elementsCountRim + 2
-        for e2 in range(self.elementsCountUp):
-            for e1 in range(self.elementsCountAcross):
-                eft1 = eft
-                scalefactors = None
-                nids = [ self.nodeId[0][e2][e1], self.nodeId[0][e2][e1 + 1], self.nodeId[0][e2 + 1][e1], self.nodeId[0][e2 + 1][e1 + 1], 
-                         self.nodeId[1][e2][e1], self.nodeId[1][e2][e1 + 1], self.nodeId[1][e2 + 1][e1], self.nodeId[1][e2 + 1][e1 + 1] ]
-                if e2 < e2b:
-                    if (e1 < e1b) or (e1 > e1y):
-                        continue  # no element due to triple point closure
-                    if e2 == e2a:
-                        if (e1 == e1b) or (e1 == e1y):
-                            # map bottom triple point element
+        for e3 in range(self.elementsCountThroughWall):
+            for e2 in range(self.elementsCountUp):
+                for e1 in range(self.elementsCountAcross):
+                    eft1 = eft
+                    scalefactors = None
+                    nids = [ self.nodeId[e3][e2][e1], self.nodeId[e3][e2][e1 + 1], self.nodeId[e3][e2 + 1][e1], self.nodeId[e3][e2 + 1][e1 + 1],
+                             self.nodeId[e3+1][e2][e1], self.nodeId[e3+1][e2][e1 + 1], self.nodeId[e3+1][e2 + 1][e1], self.nodeId[e3+1][e2 + 1][e1 + 1] ]
+                    if e2 < e2b:
+                        if (e1 < e1b) or (e1 > e1y):
+                            continue  # no element due to triple point closure
+                        if e2 == e2a:
+                            if (e1 == e1b) or (e1 == e1y):
+                                # map bottom triple point element
+                                eft1 = tricubichermite.createEftNoCrossDerivatives()
+                                setEftScaleFactorIds(eft1, [1], [])
+                                scalefactors = [ -1.0 ]
+                                if e1 == e1b:
+                                    remapEftNodeValueLabel(eft1, [ 3, 7 ], Node.VALUE_LABEL_D_DS2, [ ( Node.VALUE_LABEL_D_DS1, [] ), ( Node.VALUE_LABEL_D_DS2, [] ) ])
+                                else:
+                                    remapEftNodeValueLabel(eft1, [ 4, 8 ], Node.VALUE_LABEL_D_DS2, [ ( Node.VALUE_LABEL_D_DS1, [1] ), ( Node.VALUE_LABEL_D_DS2, [] ) ])
+                    elif e2 == e2b:
+                        if (e1 <= e1a) or (e1 >= e1z):
+                            # map top 2 triple point elements
                             eft1 = tricubichermite.createEftNoCrossDerivatives()
                             setEftScaleFactorIds(eft1, [1], [])
                             scalefactors = [ -1.0 ]
-                            if e1 == e1b:
-                                remapEftNodeValueLabel(eft1, [ 3, 7 ], Node.VALUE_LABEL_D_DS2, [ ( Node.VALUE_LABEL_D_DS1, [] ), ( Node.VALUE_LABEL_D_DS2, [] ) ])
-                            else:
-                                remapEftNodeValueLabel(eft1, [ 4, 8 ], Node.VALUE_LABEL_D_DS2, [ ( Node.VALUE_LABEL_D_DS1, [1] ), ( Node.VALUE_LABEL_D_DS2, [] ) ])
-                elif e2 == e2b:
-                    if (e1 <= e1a) or (e1 >= e1z):
-                        # map top 2 triple point elements
-                        eft1 = tricubichermite.createEftNoCrossDerivatives()
-                        setEftScaleFactorIds(eft1, [1], [])
-                        scalefactors = [ -1.0 ]
-                        if e1 < e1a:
-                            e2r = e1
-                            nids[0] = self.nodeId[0][e2r    ][e1b]
-                            nids[1] = self.nodeId[0][e2r + 1][e1b]
-                            nids[4] = self.nodeId[1][e2r    ][e1b]
-                            nids[5] = self.nodeId[1][e2r + 1][e1b]
-                            remapEftNodeValueLabel(eft1, [ 1, 2, 5, 6 ], Node.VALUE_LABEL_D_DS2, [ ( Node.VALUE_LABEL_D_DS1, [1] ) ])
-                            remapEftNodeValueLabel(eft1, [ 1, 2, 5, 6 ], Node.VALUE_LABEL_D_DS1, [ ( Node.VALUE_LABEL_D_DS2, [] ) ])
-                        elif e1 == e1a:
-                            nids[0] = self.nodeId[0][e2a][e1b]
-                            nids[4] = self.nodeId[1][e2a][e1b]
-                            remapEftNodeValueLabel(eft1, [ 1, 5 ], Node.VALUE_LABEL_D_DS2, [ ( Node.VALUE_LABEL_D_DS1, [1] ) ])
-                            remapEftNodeValueLabel(eft1, [ 1, 5 ], Node.VALUE_LABEL_D_DS1, [ ( Node.VALUE_LABEL_D_DS2, [] ) ])
-                            remapEftNodeValueLabel(eft1, [ 2, 6 ], Node.VALUE_LABEL_D_DS1, [ ( Node.VALUE_LABEL_D_DS1, [] ), ( Node.VALUE_LABEL_D_DS2, [] ) ])
-                        elif e1 == e1z:
-                            nids[1] = self.nodeId[0][e2a][e1z]
-                            nids[5] = self.nodeId[1][e2a][e1z]
-                            remapEftNodeValueLabel(eft1, [ 1, 5 ], Node.VALUE_LABEL_D_DS1, [ ( Node.VALUE_LABEL_D_DS1, [] ), ( Node.VALUE_LABEL_D_DS2, [1] ) ])
-                            remapEftNodeValueLabel(eft1, [ 2, 6 ], Node.VALUE_LABEL_D_DS1, [ ( Node.VALUE_LABEL_D_DS2, [1] ) ])
-                            remapEftNodeValueLabel(eft1, [ 2, 6 ], Node.VALUE_LABEL_D_DS2, [ ( Node.VALUE_LABEL_D_DS1, [] ) ])
-                        elif e1 > e1z:
-                            e2r = self.elementsCountAcross - e1
-                            nids[0] = self.nodeId[0][e2r    ][e1z]
-                            nids[1] = self.nodeId[0][e2r - 1][e1z]
-                            nids[4] = self.nodeId[1][e2r    ][e1z]
-                            nids[5] = self.nodeId[1][e2r - 1][e1z]
-                            remapEftNodeValueLabel(eft1, [ 1, 2, 5, 6 ], Node.VALUE_LABEL_D_DS1, [ ( Node.VALUE_LABEL_D_DS2, [1] ) ])
-                            remapEftNodeValueLabel(eft1, [ 1, 2, 5, 6 ], Node.VALUE_LABEL_D_DS2, [ ( Node.VALUE_LABEL_D_DS1, [] ) ])
-                if eft1 is not eft:
-                    elementtemplate1.defineField(coordinates, -1, eft1)
-                    element = mesh.createElement(elementIdentifier, elementtemplate1)
-                else:
-                    element = mesh.createElement(elementIdentifier, elementtemplate)
-                result2 = element.setNodesByIdentifier(eft1, nids)
-                if scalefactors:
-                    result3 = element.setScaleFactors(eft1, scalefactors)
-                else:
-                    result3 = 7
-                #print('create element shield', elementIdentifier, result2, result3, nids)
-                self.elementId[e2][e1] = elementIdentifier
-                elementIdentifier += 1
+                            if e1 < e1a:
+                                e2r = e1
+                                nids[0] = self.nodeId[0][e2r    ][e1b]
+                                nids[1] = self.nodeId[0][e2r + 1][e1b]
+                                nids[4] = self.nodeId[1][e2r    ][e1b]
+                                nids[5] = self.nodeId[1][e2r + 1][e1b]
+                                remapEftNodeValueLabel(eft1, [ 1, 2, 5, 6 ], Node.VALUE_LABEL_D_DS2, [ ( Node.VALUE_LABEL_D_DS1, [1] ) ])
+                                remapEftNodeValueLabel(eft1, [ 1, 2, 5, 6 ], Node.VALUE_LABEL_D_DS1, [ ( Node.VALUE_LABEL_D_DS2, [] ) ])
+                            elif e1 == e1a:
+                                nids[0] = self.nodeId[e3][e2a][e1b]
+                                nids[4] = self.nodeId[e3+1][e2a][e1b]
+                                remapEftNodeValueLabel(eft1, [ 1, 5 ], Node.VALUE_LABEL_D_DS2, [ ( Node.VALUE_LABEL_D_DS1, [1] ) ])
+                                remapEftNodeValueLabel(eft1, [ 1, 5 ], Node.VALUE_LABEL_D_DS1, [ ( Node.VALUE_LABEL_D_DS2, [] ) ])
+                                remapEftNodeValueLabel(eft1, [ 2, 6 ], Node.VALUE_LABEL_D_DS1, [ ( Node.VALUE_LABEL_D_DS1, [] ), ( Node.VALUE_LABEL_D_DS2, [] ) ])
+                            elif e1 == e1z:
+                                nids[1] = self.nodeId[e3][e2a][e1z]
+                                nids[5] = self.nodeId[e3+1][e2a][e1z]
+                                remapEftNodeValueLabel(eft1, [ 1, 5 ], Node.VALUE_LABEL_D_DS1, [ ( Node.VALUE_LABEL_D_DS1, [] ), ( Node.VALUE_LABEL_D_DS2, [1] ) ])
+                                remapEftNodeValueLabel(eft1, [ 2, 6 ], Node.VALUE_LABEL_D_DS1, [ ( Node.VALUE_LABEL_D_DS2, [1] ) ])
+                                remapEftNodeValueLabel(eft1, [ 2, 6 ], Node.VALUE_LABEL_D_DS2, [ ( Node.VALUE_LABEL_D_DS1, [] ) ])
+                            elif e1 > e1z:
+                                e2r = self.elementsCountAcross - e1
+                                nids[0] = self.nodeId[0][e2r    ][e1z]
+                                nids[1] = self.nodeId[0][e2r - 1][e1z]
+                                nids[4] = self.nodeId[1][e2r    ][e1z]
+                                nids[5] = self.nodeId[1][e2r - 1][e1z]
+                                remapEftNodeValueLabel(eft1, [ 1, 2, 5, 6 ], Node.VALUE_LABEL_D_DS1, [ ( Node.VALUE_LABEL_D_DS2, [1] ) ])
+                                remapEftNodeValueLabel(eft1, [ 1, 2, 5, 6 ], Node.VALUE_LABEL_D_DS2, [ ( Node.VALUE_LABEL_D_DS1, [] ) ])
+                    if eft1 is not eft:
+                        elementtemplate1.defineField(coordinates, -1, eft1)
+                        element = mesh.createElement(elementIdentifier, elementtemplate1)
+                    else:
+                        element = mesh.createElement(elementIdentifier, elementtemplate)
+                    result2 = element.setNodesByIdentifier(eft1, nids)
+                    if scalefactors:
+                        result3 = element.setScaleFactors(eft1, scalefactors)
+                    else:
+                        result3 = 7
+                    #print('create element shield', elementIdentifier, result2, result3, nids)
+                    self.elementId[e2][e1] = elementIdentifier
+                    elementIdentifier += 1
 
-                for meshGroup in meshGroups:
-                    meshGroup.addElement(element)
+                    for meshGroup in meshGroups:
+                        meshGroup.addElement(element)
 
         return elementIdentifier

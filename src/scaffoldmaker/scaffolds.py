@@ -38,6 +38,7 @@ from scaffoldmaker.meshtypes.meshtype_3d_solidcylinder5 import MeshType_3d_solid
 from scaffoldmaker.meshtypes.meshtype_3d_solidcylinder6 import MeshType_3d_solidcylinder6
 from scaffoldmaker.meshtypes.meshtype_3d_solidcylinder7 import MeshType_3d_solidcylinder7
 from scaffoldmaker.meshtypes.meshtype_3d_solidcylinder8 import MeshType_3d_solidcylinder8
+from scaffoldmaker.meshtypes.meshtype_3d_solidcylinder9 import MeshType_3d_solidcylinder9
 from scaffoldmaker.meshtypes.meshtype_3d_solidsphere1 import MeshType_3d_solidsphere1
 from scaffoldmaker.meshtypes.meshtype_3d_sphereshell1 import MeshType_3d_sphereshell1
 from scaffoldmaker.meshtypes.meshtype_3d_sphereshellseptum1 import MeshType_3d_sphereshellseptum1
@@ -87,6 +88,7 @@ class Scaffolds(object):
             MeshType_3d_solidcylinder6,
             MeshType_3d_solidcylinder7,
             MeshType_3d_solidcylinder8,
+            MeshType_3d_solidcylinder9,
             MeshType_3d_solidsphere1,
             MeshType_3d_sphereshell1,
             MeshType_3d_sphereshellseptum1,

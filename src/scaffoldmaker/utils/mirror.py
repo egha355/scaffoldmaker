@@ -13,7 +13,8 @@ def getPointDistanceFromPlane(x, p):
     :return: Distance.
     """
     n = getPlaneNormalVector(p)
-    return vector.dotproduct(x, n) - p[3]
+    ma = vector.magnitude(p[:2])
+    return vector.dotproduct(x, n) - p[3] / ma
 
 def getPlaneNormalVector(p):
     """
@@ -45,12 +46,14 @@ def mirrorImageOfPoint(x, p):
     n = getPlaneNormalVector(p)
     return [x[c] - 2*D*n[c] for c in range(3)]
 
-def mirrorVector(v, p):
+def mirrorVector(v, p, keepSign = True):
     """
     Find the mirror image of vector v on plane p
     :param v: Vector.
     :param p: Plane.
+    :param keepSign: If True, negative of the vector is returned.
     :return: image vector.
     """
+    s = 1 if keepSign else -1
     n = getPlaneNormalVector(p)
-    return [v[c] - 2 * vector.dotproduct(v, n) * n[c] for c in range(3)]
+    return [s*v[c] - s*2 * vector.dotproduct(v, n) * n[c] for c in range(3)]

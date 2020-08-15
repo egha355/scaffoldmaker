@@ -24,13 +24,13 @@ from scaffoldmaker.utils import mirror
 from scaffoldmaker.utils.eft_utils import remapEftNodeValueLabel, setEftScaleFactorIds
 from scaffoldmaker.utils.cylindermesh import createCylinderMesh3d, CylinderMode
 
-class MeshType_3d_wholebody1(Scaffold_base):
+class MeshType_3d_solidcylinder11(Scaffold_base):
     '''
     classdocs
     '''
     @staticmethod
     def getName():
-        return '3D Whole Body 1'
+        return '3D Solid Cylinder 11'
 
     @staticmethod
     def getDefaultOptions(parameterSetName='Default'):

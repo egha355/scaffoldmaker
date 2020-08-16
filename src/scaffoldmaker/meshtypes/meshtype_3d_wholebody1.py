@@ -1,28 +1,17 @@
 """
-Generates a 3-D unit cylinder mesh with variable numbers of elements around, along and
-through wall.
+Generates 3-D mesh of whole body.
 """
 
 from __future__ import division
 import math
 from opencmiss.utils.zinc.field import findOrCreateFieldCoordinates
-from opencmiss.zinc.element import Element, Elementbasis
-from opencmiss.zinc.field import Field
-from opencmiss.zinc.node import Node
+from opencmiss.zinc.element import Element
 from scaffoldmaker.meshtypes.scaffold_base import Scaffold_base
-from scaffoldmaker.utils.eftfactory_tricubichermite import eftfactory_tricubichermite
 from scaffoldmaker.utils.meshrefinement import MeshRefinement
 from scaffoldmaker.annotation.annotationgroup import AnnotationGroup, findOrCreateAnnotationGroupForTerm, getAnnotationGroupForTerm
 from scaffoldmaker.annotation.torso_terms import get_torso_term
-from scaffoldmaker.utils import geometry
-from scaffoldmaker.utils.shieldmesh import ShieldMesh
+from scaffoldmaker.utils.cylindermesh import CylinderMesh, CylinderMode
 from scaffoldmaker.utils import vector
-from scaffoldmaker.utils.interpolation import computeCubicHermiteDerivativeScaling, getCubicHermiteArcLength, interpolateSampleCubicHermite, \
-    sampleCubicHermiteCurves, sampleCubicHermiteCurvesSmooth, smoothCubicHermiteDerivativesLine
-from opencmiss.utils.zinc.finiteelement import getMaximumElementIdentifier, getMaximumNodeIdentifier
-from scaffoldmaker.utils import mirror
-from scaffoldmaker.utils.eft_utils import remapEftNodeValueLabel, setEftScaleFactorIds
-from scaffoldmaker.utils.cylindermesh import createCylinderMesh3d, CylinderMode
 
 class MeshType_3d_wholebody1(Scaffold_base):
     '''
@@ -35,13 +24,23 @@ class MeshType_3d_wholebody1(Scaffold_base):
     @staticmethod
     def getDefaultOptions(parameterSetName='Default'):
         return {
-            'Major radius' : 2.5,
-            'Minor radius' : 1.5,
+            'Torso major radius' : 2.5,
+            'Torso minor radius' : 1.5,
             'Torso height' : 5.0,
             'Number of elements across torso' : 8,
             'Number of elements up torso' : 5,
             'Number of elements along torso' : 5,
             'Number of elements for rim' : 0,
+            'Arm radius' : 0.5,
+            'Arm length' : 5.0,
+            'Arm centre height on axis3' : 5.0,
+            'Arm base distance from centre on axis3' : 3.0,
+            'Arm angle degrees': 90,
+            'Leg radius': 0.75,
+            'Leg length': 7.5,
+            'Leg centre height on axis3': 0.5,
+            'Leg base distance from centre on axis3': 2.0,
+            'Leg angle degrees': 30,
             'Use cross derivatives' : False,
             'Refine' : False,
             'Refine number of elements around' : 1,
@@ -52,13 +51,23 @@ class MeshType_3d_wholebody1(Scaffold_base):
     @staticmethod
     def getOrderedOptionNames():
         return [
-            'Major radius',
-            'Minor radius',
+            'Torso major radius',
+            'Torso minor radius',
             'Torso height',
             'Number of elements across torso',
             'Number of elements up torso',
             'Number of elements along torso',
             'Number of elements for rim',
+            'Arm radius',
+            'Arm length',
+            'Arm centre height on axis3',
+            'Arm base distance from centre on axis3',
+            'Arm angle degrees',
+            'Leg radius',
+            'Leg length',
+            'Leg centre height on axis3',
+            'Leg base distance from centre on axis3',
+            'Leg angle degrees',
             'Use cross derivatives',
             'Refine',
             'Refine number of elements around',
@@ -85,8 +94,8 @@ class MeshType_3d_wholebody1(Scaffold_base):
         :param options: Dict containing options. See getDefaultOptions().
         :return: None
         """
-        majorRadius = options['Major radius']
-        minorRadius = options['Minor radius']
+        majorRadius = options['Torso major radius']
+        minorRadius = options['Torso minor radius']
         height = options['Torso height']
         elementsCountAcross = options['Number of elements across torso']
         elementsCountUp = options['Number of elements up torso']
@@ -96,7 +105,20 @@ class MeshType_3d_wholebody1(Scaffold_base):
         elementsCountAcrossNonRim = elementsCountAcross - 2*elementsCountRim
         elementsCountAround = 2 * elementsCountUpRegular + elementsCountAcrossNonRim
         useCrossDerivatives = options['Use cross derivatives']
+        armRadius = options['Arm radius']
+        armLength = options['Arm length']
+        armh = options['Arm centre height on axis3']
+        armd = options['Arm base distance from centre on axis3']
+        armt = math.radians(options['Arm angle degrees'])
+        legRadius = options['Leg radius']
+        legLength = options['Leg length']
+        legh = options['Leg centre height on axis3']
+        legd = options['Leg base distance from centre on axis3']
+        legt = math.radians(options['Leg angle degrees'])
 
+        axis1 = [1.0, 0.0, 0.0]
+        axis2 = [0.0, 1.0, 0.0]
+        axis3 = [0.0, 0.0, 1.0]
 
         fm = region.getFieldmodule()
         fm.beginChange()
@@ -106,15 +128,37 @@ class MeshType_3d_wholebody1(Scaffold_base):
         btGroup = AnnotationGroup(region, get_torso_term("anterior of torso"))
         annotationGroups = [ btGroup ]
 
-        createCylinderMesh3d(fm, coordinates, [0.0, 0.0, 0.0], [0.0, 0.0, height], [majorRadius, 0.0, 0.0], minorRadius,
-                             elementsCountAcross, elementsCountUp, elementsCountAlong, 1,
-                             1, cylinderMode=CylinderMode.CYLINDER_MODE_FULL, useCrossDerivatives=False)
-        createCylinderMesh3d(fm, coordinates, [-3.0, 0.0, 5.0], [-5.0, 0.0, 0.0], [0.0, 0.5, 0.0], 0.5,
-                             elementsCountAcross, elementsCountUp, elementsCountAlong, 1,
-                             1, cylinderMode=CylinderMode.CYLINDER_MODE_FULL, useCrossDerivatives=False)
-        createCylinderMesh3d(fm, coordinates, [3.0, 0.0, 5.0], [5.0, 0.0, 0.0], [0.0, 0.5, 0.0], 0.5,
-                             elementsCountAcross, elementsCountUp, elementsCountAlong, 1,
-                             1, cylinderMode=CylinderMode.CYLINDER_MODE_FULL, useCrossDerivatives=False)
+        # set arms cylinder properties
+        larmBaseCentre = vector.addVectors(axis1, axis3, armd*math.sin(armt), armh-armd*math.cos(armt))
+        rarmBaseCentre = vector.addVectors(axis1, axis3, armd*math.sin(-armt), armh-armd*math.cos(-armt))
+        larmAlongAxis  = vector.addVectors(axis1, axis3, armLength*math.sin(armt), -armLength*math.cos(armt))
+        rarmAlongAxis  = vector.addVectors(axis1, axis3, armLength*math.sin(-armt), -armLength*math.cos(-armt))
+        larmMajorAxis   = vector.addVectors(axis1, axis3, armRadius*math.cos(armt), armRadius*math.sin(armt))
+        rarmMajorAxis   = vector.addVectors(axis1, axis3, armRadius*math.cos(-armt), armRadius*math.sin(-armt))
+        # set legs cylinders properties
+        llegBaseCentre = vector.addVectors(axis1, axis3, legd*math.sin(legt), legh-legd*math.cos(legt))
+        rlegBaseCentre = vector.addVectors(axis1, axis3, legd*math.sin(-legt), legh-legd*math.cos(-legt))
+        llegAlongAxis  = vector.addVectors(axis1, axis3, legLength*math.sin(legt), -legLength*math.cos(legt))
+        rlegAlongAxis  = vector.addVectors(axis1, axis3, legLength*math.sin(-legt), -legLength*math.cos(-legt))
+        llegMajorAxis   = vector.addVectors(axis1, axis3, legRadius*math.cos(legt), legRadius*math.sin(legt))
+        rlegMajorAxis   = vector.addVectors(axis1, axis3, legRadius*math.cos(-legt), legRadius*math.sin(-legt))
+
+        torso = CylinderMesh(fm, coordinates, [0.0, 0.0, 0.0], vector.setMagnitude(axis3, height), vector.setMagnitude(axis1, majorRadius), minorRadius,
+                             elementsCountAcross, elementsCountUp, elementsCountAlong,
+                             cylinderMode=CylinderMode.CYLINDER_MODE_FULL, useCrossDerivatives=False)
+        larm = CylinderMesh(fm, coordinates, larmBaseCentre, larmAlongAxis, larmMajorAxis, armRadius,
+                             elementsCountAcross, elementsCountUp, elementsCountAlong,
+                             cylinderMode=CylinderMode.CYLINDER_MODE_FULL, useCrossDerivatives=False)
+        rarm = CylinderMesh(fm, coordinates, rarmBaseCentre, rarmAlongAxis, rarmMajorAxis, armRadius,
+                             elementsCountAcross, elementsCountUp, elementsCountAlong,
+                             cylinderMode=CylinderMode.CYLINDER_MODE_FULL, useCrossDerivatives=False)
+        lleg = CylinderMesh(fm, coordinates, llegBaseCentre, llegAlongAxis, llegMajorAxis, legRadius,
+                             elementsCountAcross, elementsCountUp, elementsCountAlong,
+                             cylinderMode=CylinderMode.CYLINDER_MODE_FULL, useCrossDerivatives=False)
+        rleg = CylinderMesh(fm, coordinates, rlegBaseCentre, rlegAlongAxis, rlegMajorAxis, legRadius,
+                             elementsCountAcross, elementsCountUp, elementsCountAlong,
+                             cylinderMode=CylinderMode.CYLINDER_MODE_FULL, useCrossDerivatives=False)
+
 
 
         fm.endChange()

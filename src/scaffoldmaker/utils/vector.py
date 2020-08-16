@@ -35,3 +35,10 @@ def setMagnitude(v, mag):
     '''
     scale = mag/math.sqrt(sum(c*c for c in v))
     return [ c*scale for c in v ]
+
+def addVectors(v1,v2,s1=1,s2=1):
+    '''
+    returns s1*v1+s2*v2 where s1 and s2 are scalars.
+    :return: Vector s1*v1+s2*v2
+    '''
+    return [s1 * v1[c] + s2 * v2[c] for c in range(len(v1))]

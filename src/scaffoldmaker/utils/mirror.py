@@ -13,7 +13,7 @@ def getPointDistanceFromPlane(x, p):
     :return: Distance.
     """
     n = getPlaneNormalVector(p)
-    ma = vector.magnitude(p[:2])
+    ma = vector.magnitude(p[:3])
     return vector.dotproduct(x, n) - p[3] / ma
 
 def getPlaneNormalVector(p):

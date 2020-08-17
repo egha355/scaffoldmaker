@@ -1,18 +1,15 @@
 """
-Generates a 3-D unit cylinder mesh with variable numbers of elements around, along and
-through wall.
+Generates a 3-D cylinder mesh with variable numbers of elements around, along and
+across.
 """
 
 from __future__ import division
 import math
 from opencmiss.utils.zinc.field import findOrCreateFieldCoordinates
-from opencmiss.zinc.element import Element, Elementbasis
-from opencmiss.zinc.field import Field
-from opencmiss.zinc.node import Node
 from scaffoldmaker.meshtypes.scaffold_base import Scaffold_base
-from scaffoldmaker.utils.eftfactory_tricubichermite import eftfactory_tricubichermite
 from scaffoldmaker.utils.meshrefinement import MeshRefinement
-from scaffoldmaker.utils import geometry
+from scaffoldmaker.utils import vector
+from scaffoldmaker.utils.cylindermesh2 import CylinderType, CylinderMesh, CylinderMode
 
 
 class MeshType_3d_solidcylinder3(Scaffold_base):
@@ -26,9 +23,13 @@ class MeshType_3d_solidcylinder3(Scaffold_base):
     @staticmethod
     def getDefaultOptions(parameterSetName='Default'):
         return {
-            'Number of elements around' : 16,
-            'Number of elements along' : 1,
-            'Number of elements through wall' : 1,
+            'Cylinder height' : 5.0,
+            'Major radius' : 2.5,
+            'Minor radius' : 1.0,
+            'Radius reduction rate' : 0.08,
+            'Number of elements across' : 8,
+            'Number of elements up' : 5,
+            'Number of elements along' : 5,
             'Use cross derivatives' : False,
             'Refine' : False,
             'Refine number of elements around' : 1,
@@ -39,9 +40,13 @@ class MeshType_3d_solidcylinder3(Scaffold_base):
     @staticmethod
     def getOrderedOptionNames():
         return [
-            'Number of elements around',
+            'Cylinder height',
+            'Major radius',
+            'Minor radius',
+            'Radius reduction rate',
+            'Number of elements across',
+            'Number of elements up',
             'Number of elements along',
-            'Number of elements through wall',
             'Use cross derivatives',
             'Refine',
             'Refine number of elements around',
@@ -73,161 +78,32 @@ class MeshType_3d_solidcylinder3(Scaffold_base):
         :param options: Dict containing options. See getDefaultOptions().
         :return: None
         """
-        elementsCountAround = options['Number of elements around']
+        height = options['Cylinder height']
+        majorRadius = options['Major radius']
+        minorRadius = options['Minor radius']
+        rate = options['Radius reduction rate']
+        elementsCountAcross = options['Number of elements across']
+        elementsCountUp = options['Number of elements up']
         elementsCountAlong = options['Number of elements along']
-        elementsCountThroughWall = options['Number of elements through wall']
         useCrossDerivatives = options['Use cross derivatives']
 
         fm = region.getFieldmodule()
         fm.beginChange()
         coordinates = findOrCreateFieldCoordinates(fm)
 
-        nodes = fm.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_NODES)
-        nodetemplate = nodes.createNodetemplate()
-        nodetemplate.defineField(coordinates)
-        nodetemplate.setValueNumberOfVersions(coordinates, -1, Node.VALUE_LABEL_VALUE, 1)
-        nodetemplate.setValueNumberOfVersions(coordinates, -1, Node.VALUE_LABEL_D_DS1, 1)
-        nodetemplate.setValueNumberOfVersions(coordinates, -1, Node.VALUE_LABEL_D_DS2, 1)
-        if useCrossDerivatives:
-            nodetemplate.setValueNumberOfVersions(coordinates, -1, Node.VALUE_LABEL_D2_DS1DS2, 1)
-        nodetemplate.setValueNumberOfVersions(coordinates, -1, Node.VALUE_LABEL_D_DS3, 1)
-        if useCrossDerivatives:
-            nodetemplate.setValueNumberOfVersions(coordinates, -1, Node.VALUE_LABEL_D2_DS1DS3, 1)
-            nodetemplate.setValueNumberOfVersions(coordinates, -1, Node.VALUE_LABEL_D2_DS2DS3, 1)
-            nodetemplate.setValueNumberOfVersions(coordinates, -1, Node.VALUE_LABEL_D3_DS1DS2DS3, 1)
+        axis1 = [1.0, 0.0, 0.0]
+        axis2 = [0.0, 1.0, 0.0]
+        axis3 = [0.0, 0.0, 1.0]
 
-        mesh = fm.findMeshByDimension(3)
+        fm = region.getFieldmodule()
+        fm.beginChange()
+        coordinates = findOrCreateFieldCoordinates(fm)
 
-        tricubichermite = eftfactory_tricubichermite(mesh, useCrossDerivatives)
-        eft = tricubichermite.createEftBasic()
+        cylinder1 = CylinderMesh(fm, coordinates, [0.0, 0.0, 0.0], vector.setMagnitude(axis3, height), vector.setMagnitude(axis1, majorRadius), minorRadius,
+                             elementsCountAcross, elementsCountUp, elementsCountAlong,
+                             cylinderMode=CylinderMode.CYLINDER_MODE_FULL, cylinderType=CylinderType.CYLIDNER_TRUNCATED_CONE,
+                             rate=rate, useCrossDerivatives=False)
 
-        elementtemplate = mesh.createElementtemplate()
-        elementtemplate.setElementShapeType(Element.SHAPE_TYPE_CUBE)
-        result = elementtemplate.defineField(coordinates, -1, eft)
-
-        cache = fm.createFieldcache()
-
-        # create nodes
-        nodeIdentifier = 1
-        x = [ 0.0, 0.0, 0.0 ]
-        dx_ds1 = [ 0.0 , 0.0, 0.0 ]
-        dx_ds2 = [ 0.0, 0.0, 1.0 / elementsCountAlong ]
-        dx_ds3 = [ 0.0, 0.0, 0.0 ]
-
-        dist = 0.2
-        radius = 0.5
-        for nz in range(elementsCountAlong+1):
-            x = [0.0, 0.0, nz * elementsCountAlong]
-            dx_ds1 = [dist, 0.0, 0.0]
-            dx_ds3 = [0.0, dist, 0.0]
-            node = nodes.createNode(nodeIdentifier, nodetemplate)
-            cache.setNode(node)
-            coordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_VALUE, 1, x)
-            coordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS1, 1, dx_ds1)
-            coordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS2, 1, dx_ds2)
-            coordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS3, 1, dx_ds3)
-            nodeIdentifier += 1
-
-        # inner square
-        cx = [1, 1, 0, -1, -1, -1, 0, 1]
-        cy = [0, 1, 1, 1, 0, -1, -1, -1]
-        for nz in range(elementsCountAlong+1):
-            for nr in range(8):
-                x = [dist*cx[nr], dist*cy[nr], nz * elementsCountAlong]
-                dx_ds1 = [dist, 0.0, 0.0]
-                dx_ds3 = [0.0, dist, 0.0]
-                node = nodes.createNode(nodeIdentifier, nodetemplate)
-                cache.setNode(node)
-                coordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_VALUE, 1, x)
-                coordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS1, 1, dx_ds1)
-                coordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS2, 1, dx_ds2)
-                coordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS3, 1, dx_ds3)
-                nodeIdentifier += 1
-
-        # outer ellipse
-        radiansPerElementAround = 2.0 * math.pi / elementsCountAround
-        majorRadius = 2
-        minorRadius = 0.5
-        perimeter = geometry.getApproximateEllipsePerimeter(majorRadius, minorRadius)
-        arcLengthPerElementAround = perimeter/elementsCountAround
-        radiansAround = 0.0
-        for nz in range(elementsCountAlong+1):
-            x[2] = nz * 1.0/elementsCountAlong
-            for nr in range(elementsCountThroughWall):
-                for nt in range(elementsCountAround):
-                    # radiansAround = nt * radiansPerElementAround
-                    radiansAround = geometry.updateEllipseAngleByArcLength(majorRadius, minorRadius, radiansAround, arcLengthPerElementAround)
-                    cosRadiansAround = math.cos(radiansAround)
-                    sinRadiansAround = math.sin(radiansAround)
-                    x[0] = majorRadius*cosRadiansAround
-                    x[1] = minorRadius*sinRadiansAround
-                    DTS = 1.0/math.sqrt(majorRadius/minorRadius*x[1]*majorRadius/minorRadius*x[1]+minorRadius/majorRadius*x[0]*minorRadius/majorRadius*x[0])
-                    dx_ds1 = [-majorRadius*sinRadiansAround*DTS*arcLengthPerElementAround, minorRadius*cosRadiansAround*DTS*arcLengthPerElementAround, 0.0]
-                    # dx_ds1 = [-majorRadius*sinRadiansAround*radiansPerElementAround, minorRadius*cosRadiansAround*radiansPerElementAround, 0.0]
-                    dx_ds3 = [(radius-dist)*cosRadiansAround, (radius-dist)*sinRadiansAround, 0.0]
-                    node = nodes.createNode(nodeIdentifier, nodetemplate)
-                    cache.setNode(node)
-                    coordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_VALUE, 1, x)
-                    coordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS1, 1, dx_ds1)
-                    coordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS2, 1, dx_ds2)
-                    coordinates.setNodeParameters(cache, -1, Node.VALUE_LABEL_D_DS3, 1, dx_ds3)
-                    nodeIdentifier += 1
-
-
-        # create elements
-        # inner cubic elements
-        elementIdentifier = 1
-        nodeIdentifiers = [1, 3, 2, 11, 5, 4, 13, 12]
-        element = mesh.createElement(elementIdentifier, elementtemplate)
-        result = element.setNodesByIdentifier(eft, nodeIdentifiers)
-        elementIdentifier = elementIdentifier + 1
-        nodeIdentifiers = [7, 1, 15, 2, 6, 5, 14, 13]
-        element = mesh.createElement(elementIdentifier, elementtemplate)
-        result = element.setNodesByIdentifier(eft, nodeIdentifiers)
-        elementIdentifier = elementIdentifier + 1
-        nodeIdentifiers = [8, 9, 16, 17, 7, 1, 15, 2]
-        element = mesh.createElement(elementIdentifier, elementtemplate)
-        result = element.setNodesByIdentifier(eft, nodeIdentifiers)
-        elementIdentifier = elementIdentifier + 1
-        nodeIdentifiers = [9, 10, 17, 18, 1, 3, 2, 11]
-        element = mesh.createElement(elementIdentifier, elementtemplate)
-        result = element.setNodesByIdentifier(eft, nodeIdentifiers)
-        elementIdentifier = elementIdentifier + 1
-
-        # outer elements
-        # now = (elementsCountAlong + 1)*elementsCountAround
-        # for e3 in range(elementsCountThroughWall+1):
-        for e2 in range(elementsCountAlong):
-            for e1 in range(elementsCountAround):
-                bni1 = elementsCountAlong+1+e1+1
-                bni2 = elementsCountAlong+1+(e1+1)%elementsCountAround+1
-                # nodeIdentifiers = [bni1, bni2, bni1+elementsCountAround, bni2+elementsCountAround, bni1+2*elementsCountAround, bni2+2*elementsCountAround, bni1+3*elementsCountAround, bni2+3*elementsCountAround]
-                nodeIdentifiers = [bni1,bni2 , bni1+elementsCountAround,bni2+elementsCountAround ,
-                                   bni1+2*elementsCountAround ,bni2+2*elementsCountAround ,bni1+3*elementsCountAround  , bni2+3*elementsCountAround]
-                element = mesh.createElement(elementIdentifier, elementtemplate)
-                result = element.setNodesByIdentifier(eft, nodeIdentifiers)
-                elementIdentifier = elementIdentifier + 1
-
-        #             if e3 == 0:
-        #                 element = mesh.createElement(elementIdentifier, elementtemplate)
-        #                 bni1 = e2+1
-        #                 bni2 = elementsCountAlong+1+e1+1+e2*elementsCountAround
-        #                 bni3 = elementsCountAlong+1+(e1+1) % elementsCountAround+1+e2*elementsCountAround
-        #                 nodeIdentifiers = [ bni1, bni1+1, bni2, bni3, bni2+elementsCountAround, bni3+elementsCountAround ]
-        #                 result = element.setNodesByIdentifier(eft, nodeIdentifiers)
-        #                 elementIdentifier = elementIdentifier + 1
-        #             else:
-        #                 element = mesh.createElement(elementIdentifier, elementtemplate2)
-        #                 bni11 = e3*now + e2*elementsCountAround + e1 + 1
-        #                 bni12 = e3*now + e2*elementsCountAround + (e1 + 1)%elementsCountAround + 1
-        #                 bni21 = e3*now + (e2 + 1)*elementsCountAround + e1 + 1
-        #                 bni22 = e3*now + (e2 + 1)*elementsCountAround + (e1 + 1)%elementsCountAround + 1
-        #                 # nodeIdentifiers = [ bni11, bni12, bni21, bni22, bni11 + now, bni12 + now, bni21 + now, bni22 + now ]
-        #                 bni1 = elementsCountAlong+1+1+e1+e2*elementsCountAround+(e3-1)*now
-        #                 bni2 = elementsCountAlong+1+1+(e1+1)%elementsCountAround+e2*elementsCountAround+(e3-1)*now
-        #                 nodeIdentifiers = [ bni1, bni2, bni1+elementsCountAround, bni2+elementsCountAround, bni1+now, bni2+now,bni1+elementsCountAround+now, bni2+elementsCountAround+now]
-        #                 result = element.setNodesByIdentifier(eft2, nodeIdentifiers)
-        #                 elementIdentifier = elementIdentifier + 1
         fm.endChange()
 
     @classmethod

@@ -10,7 +10,7 @@ from scaffoldmaker.meshtypes.scaffold_base import Scaffold_base
 from scaffoldmaker.utils.meshrefinement import MeshRefinement
 from scaffoldmaker.annotation.annotationgroup import AnnotationGroup, findOrCreateAnnotationGroupForTerm, getAnnotationGroupForTerm
 from scaffoldmaker.annotation.torso_terms import get_torso_term
-from scaffoldmaker.utils.cylindermesh import CylinderMesh, CylinderMode
+from scaffoldmaker.utils.cylindermesh2 import CylinderMesh, CylinderMode, CylinderType
 from scaffoldmaker.utils import vector
 
 class MeshType_3d_wholebody1(Scaffold_base):
@@ -27,6 +27,7 @@ class MeshType_3d_wholebody1(Scaffold_base):
             'Torso major radius' : 2.5,
             'Torso minor radius' : 1.5,
             'Torso height' : 5.0,
+            'Torso radius reduction rate' : 0.08,
             'Number of elements across torso' : 8,
             'Number of elements up torso' : 5,
             'Number of elements along torso' : 5,
@@ -54,6 +55,7 @@ class MeshType_3d_wholebody1(Scaffold_base):
             'Torso major radius',
             'Torso minor radius',
             'Torso height',
+            'Torso radius reduction rate',
             'Number of elements across torso',
             'Number of elements up torso',
             'Number of elements along torso',
@@ -97,6 +99,7 @@ class MeshType_3d_wholebody1(Scaffold_base):
         majorRadius = options['Torso major radius']
         minorRadius = options['Torso minor radius']
         height = options['Torso height']
+        rate = options['Torso radius reduction rate']
         elementsCountAcross = options['Number of elements across torso']
         elementsCountUp = options['Number of elements up torso']
         elementsCountRim = options['Number of elements for rim']
@@ -145,7 +148,8 @@ class MeshType_3d_wholebody1(Scaffold_base):
 
         torso = CylinderMesh(fm, coordinates, [0.0, 0.0, 0.0], vector.setMagnitude(axis3, height), vector.setMagnitude(axis1, majorRadius), minorRadius,
                              elementsCountAcross, elementsCountUp, elementsCountAlong,
-                             cylinderMode=CylinderMode.CYLINDER_MODE_FULL, useCrossDerivatives=False)
+                             cylinderMode=CylinderMode.CYLINDER_MODE_FULL, cylinderType=CylinderType.CYLIDNER_TRUNCATED_CONE,
+                             rate=rate, useCrossDerivatives=False)
         larm = CylinderMesh(fm, coordinates, larmBaseCentre, larmAlongAxis, larmMajorAxis, armRadius,
                              elementsCountAcross, elementsCountUp, elementsCountAlong,
                              cylinderMode=CylinderMode.CYLINDER_MODE_FULL, useCrossDerivatives=False)

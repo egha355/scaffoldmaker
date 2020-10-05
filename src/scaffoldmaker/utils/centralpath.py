@@ -24,7 +24,7 @@ def getCentralPathNodes(region, centralPath, printNodes=False):
                                                                      Node.VALUE_LABEL_D2_DS1DS3])
     if printNodes:
         for i in range(len(cx)):
-            print(i, '[', cx[i], ',', cd1[i], ',', cd2[i], ',', cd12[i], cd3[i], ',', cd13[i], '],')
+            print(i, '[', cx[i], ',', cd1[i], ',', cd2[i], ',', cd12[i], ',', cd3[i], ',', cd13[i], '],')
     del tmpRegion
 
     return cx, cd1, cd2, cd3, cd12, cd13

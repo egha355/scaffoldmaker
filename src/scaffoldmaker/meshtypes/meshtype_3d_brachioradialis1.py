@@ -28,14 +28,19 @@ with variable numbers of elements in major, minor and length directions.
                 'D2 derivatives': True,
                 'D3 derivatives': True,
                 'Length': 1.0,
-                'Number of elements': 2
+                'Number of elements': 6
             },
             'meshEdits': exnodeStringFromNodeValues(
                 [Node.VALUE_LABEL_VALUE, Node.VALUE_LABEL_D_DS1, Node.VALUE_LABEL_D_DS2, Node.VALUE_LABEL_D2_DS1DS2,
                  Node.VALUE_LABEL_D_DS3, Node.VALUE_LABEL_D2_DS1DS3], [
-                    [[-261.9, -94.9, 943.7], [9.0, -7.5, 74.9], [7.9, 0.1, -1.0], [0.0, 0.0, 0.0], [0.0, 3.98, 0.399], [0.0, 0.0, 0.0]],
-                    [[-251.6, -92.1, 1016.6], [11.6, 13.1, 70.9], [16.1, -0.5, -2.5], [0.0, 0.0, 0.0], [0.0, 7.4, -1.4], [0.0, 0.0, 0.0]],
-                    [[-239.1, -69.3, 1083.7], [13.4, 32.5, 63.3], [8.4, -0.7, -1.4], [0.0, 0.0, 0.0], [0.0, 6.0, -3.1], [0.0, 0.0, 0.0]],
+                    [[-271.0, -105.1, 854.6], [10.1, 11.7, 42.6], [4.6, -0.53, -0.82], [0.0, 0.0, 0.0], [-0.069, 1.5, -0.38], [0.0, 0.0, 0.0]],
+                    [[-263.7, -96.7, 898.3], [4.6, 5.1, 44.8], [4.64, -0.23, -0.45], [0.0, 0.0, 0.0], [-0.062, 2.6, -0.29], [0.0, 0.0, 0.0]],
+                    [[-261.9, -94.9, 943.7], [5.4, 2.3, 59.4], [7.9, 0.11, -0.73], [0.0, 0.0, 0.0], [-0.069, 4.0, -0.15], [0.0, 0.0, 0.0]],
+                    [[-251.6, -92.1, 1016.6], [11.6, 13.1, 70.8], [16.1, -0.51, -2.5], [0.0, 0.0, 0.0], [0.017, 7.41, -1.37], [0.0, 0.0, 0.0]],
+                    [[-239.1, -69.3, 1083.7], [14.9, 15.8, 48.3], [8.2, -0.97, -2.2], [0.0, 0.0, 0.0], [0.18, 6.4, -2.15], [0.0, 0.0, 0.0]],
+                    [[-226.0, -60.0, 1113.4], [12.4, 6.8, 31.7], [4.0, -0.97, -1.34], [0.0, 0.0, 0.0], [0.3, 6.6, -1.52], [0.0, 0.0, 0.0]],
+                    [[-214.6, -55.9, 1146.7], [10.4, 1.4, 34.9], [1.9, -0.74, -0.53], [0.0, 0.0, 0.0], [0.2, 2.9, -0.18], [0.0, 0.0, 0.0]],
+
                 ])
         })
     }
@@ -51,7 +56,7 @@ with variable numbers of elements in major, minor and length directions.
             'Central path': copy.deepcopy(centralPathOption),
             'Number of elements across major': 4,
             'Number of elements across minor': 4,
-            'Number of elements along': 1,
+            'Number of elements along': 6,
             'Lower half': False,
             'Use cross derivatives': False,
             'Refine': False,

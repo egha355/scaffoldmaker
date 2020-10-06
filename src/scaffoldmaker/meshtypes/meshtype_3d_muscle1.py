@@ -1,5 +1,5 @@
 """
-Generates a 3D brachioradialis muscle along a central path using cylindermesh of all cube elements,
+Generates a 3D muscle along a central path using cylindermesh of all cube elements,
  with variable numbers of elements in major, minor and length directions.
 """
 
@@ -16,9 +16,9 @@ from scaffoldmaker.meshtypes.meshtype_1d_path1 import MeshType_1d_path1
 from opencmiss.zinc.node import Node
 
 
-class MeshType_3d_brachioradialis1(Scaffold_base):
+class MeshType_3d_muscle1(Scaffold_base):
     """
-Generates a 3D brachioradialis muscle along a central path using cylindermesh of all cube elements,
+Generates a 3D muscle along a central path using cylindermesh of all cube elements,
 with variable numbers of elements in major, minor and length directions.
     """
     centralPathDefaultScaffoldPackages = {
@@ -47,15 +47,14 @@ with variable numbers of elements in major, minor and length directions.
 
     @staticmethod
     def getName():
-        return '3D Brachioradialis 1'
+        return '3D Muscle 1'
 
     @staticmethod
     def getParameterSetNames():
         return [
             'Default',
             'brachioradialis',
-            'Mouse 1',
-            'Pig 1']
+            ]
 
     @classmethod
     def getDefaultOptions(cls, parameterSetName='Default'):

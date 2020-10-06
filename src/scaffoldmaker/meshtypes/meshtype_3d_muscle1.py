@@ -49,6 +49,14 @@ with variable numbers of elements in major, minor and length directions.
     def getName():
         return '3D Brachioradialis 1'
 
+    @staticmethod
+    def getParameterSetNames():
+        return [
+            'Default',
+            'brachioradialis',
+            'Mouse 1',
+            'Pig 1']
+
     @classmethod
     def getDefaultOptions(cls, parameterSetName='Default'):
         centralPathOption = cls.centralPathDefaultScaffoldPackages['Brachioradialis 1']

@@ -258,9 +258,9 @@ class eftfactory_bicubichermitelinear:
         :return: Element field template
         '''
         eft = self.createEftBasic()
-        setEftScaleFactorIds(eft, [1], [])
-
+        
         valid = True
+
         if collapseNodes in [[1, 3], [2, 4]]: # xi3 = 0
             nodes = [1, 2, 3, 4]
             remapEftNodeValueLabel(eft, nodes, Node.VALUE_LABEL_D_DS1, [])

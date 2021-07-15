@@ -10,7 +10,7 @@ from opencmiss.utils.zinc.field import findOrCreateFieldCoordinates, findOrCreat
     findOrCreateFieldStoredString, findOrCreateFieldStoredMeshLocation, findOrCreateFieldNodeGroup
 from scaffoldmaker.meshtypes.scaffold_base import Scaffold_base
 from scaffoldmaker.utils.meshrefinement import MeshRefinement
-from scaffoldmaker.utils.cylindermesh import CylinderMesh, CylinderShape, CylinderEnds, CylinderCentralPath
+from scaffoldmaker.utils.cylindermesh import CylinderMesh, CylinderShape, CylinderEnds, CylinderCentralPath, createEllipsePerimeter
 from scaffoldmaker.utils.zinc_utils import exnodeStringFromNodeValues
 from scaffoldmaker.scaffoldpackage import ScaffoldPackage
 from scaffoldmaker.meshtypes.meshtype_1d_path1 import MeshType_1d_path1
@@ -22,8 +22,9 @@ from scaffoldmaker.annotation import heart_terms, bladder_terms, lung_terms, sto
 from opencmiss.utils.zinc.general import ChangeManager
 from opencmiss.zinc.field import Field, FieldFindMeshLocation
 from opencmiss.utils.zinc.finiteelement import get_element_node_identifiers
-from scaffoldmaker.utils.eft_utils import remapEftNodeValueLabelsVersion
-from scaffoldmaker.utils.vector import setMagnitude
+from scaffoldmaker.utils.eft_utils import remapEftNodeValueLabelsVersion, remapEftNodeValueLabel, setEftScaleFactorIds
+from scaffoldmaker.utils.vector import setMagnitude, crossproduct3
+from scaffoldmaker.utils.eftfactory_tricubichermite import eftfactory_tricubichermite
 
 
 class MeshType_3d_wholebody1(Scaffold_base):
@@ -505,6 +506,439 @@ Generates body coordinates using a solid cylinder of all cube elements,
             element, xi = findMarkerLocation.evaluateMeshLocation(fieldcache, 3)
             markerLocation.assignMeshLocation(fieldcache, element, xi)
             nodeIdentifier += 1
+
+
+
+
+
+        # Join upper_limb
+        upperlimb_along_proportion = 0.6
+        upperlimb_elementCountAlong = round(upperlimb_along_proportion * cylinder1._elementsCountAlong)
+        upperlimb_left_nid = cylinder1._shield.nodeId [upperlimb_elementCountAlong][0][cylinder1._elementsCountAcrossMinor//2]
+        upperlimb_right_nid = cylinder1._shield.nodeId[upperlimb_elementCountAlong][-1][cylinder1._elementsCountAcrossMinor//2]
+
+        circumferential_element_length = cylinder1._shield.px[upperlimb_elementCountAlong][0][cylinder1._elementsCountAcrossMinor//2][1] - cylinder1._shield.px[upperlimb_elementCountAlong][0][cylinder1._elementsCountAcrossMinor//2+1][1]
+        circumferential_element_length = abs(circumferential_element_length)
+
+        armLeftCylinder_basepx = cylinder1._shield.px[upperlimb_elementCountAlong][0][cylinder1._elementsCountAcrossMinor//2]
+        armLeftCylinder_basepx[0] += circumferential_element_length
+
+        arm_radius = 0.2
+        arm_elements_around = 12
+
+        nx, nd1 = createEllipsePerimeter(armLeftCylinder_basepx, [0,arm_radius,0], [0,0,arm_radius], arm_elements_around, 2*arm_radius)
+        nx.pop(-1)
+        nd1.pop(-1)
+
+        # square node coordinates.
+        arm_elementsCountMinor = 2
+        arm_elementsCountMajor = 2
+        arm_elementsCountAlong = 1
+        px = [[[None for i in range(2*arm_elementsCountMajor+1)] for j in range(2*arm_elementsCountMinor+1)] for k in range(arm_elementsCountAlong+1)]
+        pd1 = [[[None for i in range(2*arm_elementsCountMajor+1)] for j in range(2*arm_elementsCountMinor+1)] for k in range(arm_elementsCountAlong+1)]
+        pd2 = [[[None for i in range(2*arm_elementsCountMajor+1)] for j in range(2*arm_elementsCountMinor+1)] for k in range(arm_elementsCountAlong+1)]
+        pd3 = [[[None for i in range(2*arm_elementsCountMajor+1)] for j in range(2*arm_elementsCountMinor+1)] for k in range(arm_elementsCountAlong+1)]
+        nodeId = [[[None for i in range(2*arm_elementsCountMajor+1)] for j in range(2*arm_elementsCountMinor+1)] for k in range(arm_elementsCountAlong+1)]
+
+        d = [circumferential_element_length, 0, 0]
+        for n3 in range(arm_elementsCountAlong+1):
+            px[n3][0][1] = [nx[2][c] + n3*d[c] for c in range(3)]
+            px[n3][0][2] = [nx[3][c] + n3*d[c] for c in range(3)]
+            px[n3][0][3] = [nx[4][c] + n3*d[c] for c in range(3)]
+            px[n3][1][0] = [nx[1][c] + n3*d[c] for c in range(3)]
+            px[n3][1][4] = [nx[5][c] + n3*d[c] for c in range(3)]
+            px[n3][2][0] = [nx[0][c] + n3*d[c] for c in range(3)]
+            px[n3][2][4] = [nx[6][c] + n3*d[c] for c in range(3)]
+            px[n3][3][0] = [nx[11][c] + n3*d[c] for c in range(3)]
+            px[n3][3][4] = [nx[7][c] + n3*d[c] for c in range(3)]
+            px[n3][4][1] = [nx[10][c] + n3*d[c] for c in range(3)]
+            px[n3][4][2] = [nx[9][c] + n3*d[c] for c in range(3)]
+            px[n3][4][3] = [nx[8][c] + n3*d[c] for c in range(3)]
+
+            pd1[n3][0][1:4] = nd1[2:5]
+            pd1[n3][1][0] = nd1[1]
+            pd1[n3][1][4] = nd1[5]
+            pd1[n3][2][0] = nd1[0]
+            pd1[n3][2][4] = nd1[6]
+            pd1[n3][3][0] = nd1[11]
+            pd1[n3][3][4] = nd1[7]
+            pd1[n3][4][1] = nd1[10]
+            pd1[n3][4][2] = nd1[9]
+            pd1[n3][4][3] = nd1[8]
+
+            px[n3][1][1] = [armLeftCylinder_basepx[c] + [n3*circumferential_element_length, -2/3*circumferential_element_length, -2/3*circumferential_element_length][c] for c in range(3)]
+            px[n3][1][2] = [armLeftCylinder_basepx[c] + [n3*circumferential_element_length, 0, -2/3*circumferential_element_length][c] for c in range(3)]
+            px[n3][1][3] = [armLeftCylinder_basepx[c] + [n3*circumferential_element_length, 2/3*circumferential_element_length, -2/3*circumferential_element_length][c] for c in range(3)]
+            px[n3][2][1] = [armLeftCylinder_basepx[c] + [n3*circumferential_element_length, -2/3*circumferential_element_length, 0][c] for c in range(3)]
+            px[n3][2][2] = [armLeftCylinder_basepx[c] + [n3*circumferential_element_length, 0, 0][c] for c in range(3)]
+            px[n3][2][3] = [armLeftCylinder_basepx[c] + [n3*circumferential_element_length, 2/3*circumferential_element_length, 0][c] for c in range(3)]
+            px[n3][3][1] = [armLeftCylinder_basepx[c] + [n3*circumferential_element_length, -2/3*circumferential_element_length, 2/3*circumferential_element_length][c] for c in range(3)]
+            px[n3][3][2] = [armLeftCylinder_basepx[c] + [n3*circumferential_element_length, 0, 2/3*circumferential_element_length][c] for c in range(3)]
+            px[n3][3][3] = [armLeftCylinder_basepx[c] + [n3*circumferential_element_length, 2/3*circumferential_element_length, 2/3*circumferential_element_length][c] for c in range(3)]
+
+            pd1[n3][1][1] = [px[n3][1][2][c] - px[n3][1][1][c] for c in range(3)]
+            pd1[n3][1][2] = [px[n3][1][3][c] - px[n3][1][2][c] for c in range(3)]
+            pd1[n3][1][3] = [px[n3][1][4][c] - px[n3][1][3][c] for c in range(3)]
+            pd1[n3][2][1] = [px[n3][2][2][c] - px[n3][2][1][c] for c in range(3)]
+            pd1[n3][2][2] = [px[n3][2][3][c] - px[n3][2][2][c] for c in range(3)]
+            pd1[n3][2][3] = [px[n3][2][4][c] - px[n3][2][3][c] for c in range(3)]
+            pd1[n3][3][1] = [px[n3][3][2][c] - px[n3][3][1][c] for c in range(3)]
+            pd1[n3][3][2] = [px[n3][3][3][c] - px[n3][3][2][c] for c in range(3)]
+            pd1[n3][3][3] = [px[n3][3][4][c] - px[n3][3][3][c] for c in range(3)]
+
+            pd3[n3][1][1] = [px[n3][0][1][c] - px[n3][1][1][c] for c in range(3)]
+            pd3[n3][1][2] = [px[n3][0][2][c] - px[n3][1][2][c] for c in range(3)]
+            pd3[n3][1][3] = [px[n3][0][3][c] - px[n3][1][3][c] for c in range(3)]
+            pd3[n3][2][1] = [px[n3][1][1][c] - px[n3][2][1][c] for c in range(3)]
+            pd3[n3][2][2] = [px[n3][1][2][c] - px[n3][2][2][c] for c in range(3)]
+            pd3[n3][2][3] = [px[n3][1][3][c] - px[n3][2][3][c] for c in range(3)]
+            pd3[n3][3][1] = [px[n3][2][1][c] - px[n3][3][1][c] for c in range(3)]
+            pd3[n3][3][2] = [px[n3][2][2][c] - px[n3][3][2][c] for c in range(3)]
+            pd3[n3][3][3] = [px[n3][2][3][c] - px[n3][3][3][c] for c in range(3)]
+
+        for n3 in range(arm_elementsCountAlong+1):
+            for n2 in range(2*arm_elementsCountMinor + 1):
+                for n1 in range(2*arm_elementsCountMajor + 1):
+                    if px[n3][n2][n1]:
+                        pd2[n3][n2][n1] = [circumferential_element_length, 0 ,0]
+
+
+        for n3 in range(arm_elementsCountAlong+1):
+            pd3[n3][0][1] = setMagnitude(crossproduct3(pd1[n3][0][1], pd2[n3][0][1]), circumferential_element_length)
+            pd3[n3][0][2] = setMagnitude(crossproduct3(pd1[n3][0][2], pd2[n3][0][2]), circumferential_element_length)
+            pd3[n3][0][3] = setMagnitude(crossproduct3(pd1[n3][0][3], pd2[n3][0][3]), circumferential_element_length)
+            pd3[n3][1][0] = setMagnitude(crossproduct3(pd1[n3][1][0], pd2[n3][1][0]), circumferential_element_length)
+            pd3[n3][1][4] = setMagnitude(crossproduct3(pd1[n3][1][4], pd2[n3][1][4]), circumferential_element_length)
+            pd3[n3][2][0] = setMagnitude(crossproduct3(pd1[n3][2][0], pd2[n3][2][0]), circumferential_element_length)
+            pd3[n3][2][4] = setMagnitude(crossproduct3(pd1[n3][2][4], pd2[n3][2][4]), circumferential_element_length)
+            pd3[n3][3][0] = setMagnitude(crossproduct3(pd1[n3][3][0], pd2[n3][3][0]), circumferential_element_length)
+            pd3[n3][3][4] = setMagnitude(crossproduct3(pd1[n3][3][4], pd2[n3][3][4]), circumferential_element_length)
+            pd3[n3][4][1] = setMagnitude(crossproduct3(pd1[n3][4][1], pd2[n3][4][1]), circumferential_element_length)
+            pd3[n3][4][2] = setMagnitude(crossproduct3(pd1[n3][4][2], pd2[n3][4][2]), circumferential_element_length)
+            pd3[n3][4][3] = setMagnitude(crossproduct3(pd1[n3][4][3], pd2[n3][4][3]), circumferential_element_length)
+
+        # generate the nodes
+        nodetemplate2 = nodes.createNodetemplate()
+        nodetemplate2.defineField(coordinates)
+        nodetemplate2.setValueNumberOfVersions(coordinates, -1, Node.VALUE_LABEL_VALUE, 1)
+        nodetemplate2.setValueNumberOfVersions(coordinates, -1, Node.VALUE_LABEL_D_DS1, 1)
+        nodetemplate2.setValueNumberOfVersions(coordinates, -1, Node.VALUE_LABEL_D_DS2, 1)
+        nodetemplate2.setValueNumberOfVersions(coordinates, -1, Node.VALUE_LABEL_D_DS3, 1)
+        cache2 = fieldmodule.createFieldcache()
+
+        for n2 in range(2*arm_elementsCountMinor + 1):
+            for n3 in range(arm_elementsCountAlong+1):
+                for n1 in range(2*arm_elementsCountMajor + 1):
+                    if px[n3][n2][n1]:
+                        node = nodes.createNode(nodeIdentifier, nodetemplate2)
+                        nodeId[n3][n2][n1] = nodeIdentifier
+                        cache2.setNode(node)
+                        coordinates.setNodeParameters(cache2, -1, Node.VALUE_LABEL_VALUE, 1, px [n3][n2][n1])
+                        coordinates.setNodeParameters(cache2, -1, Node.VALUE_LABEL_D_DS1, 1, pd1[n3][n2][n1])
+                        coordinates.setNodeParameters(cache2, -1, Node.VALUE_LABEL_D_DS2, 1, pd2[n3][n2][n1])
+                        coordinates.setNodeParameters(cache2, -1, Node.VALUE_LABEL_D_DS3, 1, pd3[n3][n2][n1])
+                        nodeIdentifier += 1
+
+
+        # generate the elements
+        elementIdentifier = cylinder1._endElementIdentifier+1
+        useCrossDerivatives = False
+
+        tricubichermite = eftfactory_tricubichermite(mesh, useCrossDerivatives)
+        eft = tricubichermite.createEftNoCrossDerivatives()
+        elementtemplate2 = mesh.createElementtemplate()
+        elementtemplate2.setElementShapeType(Element.SHAPE_TYPE_CUBE)
+        elementtemplate2.defineField(coordinates, -1, eft)
+
+        elementtemplate3 = mesh.createElementtemplate()
+        elementtemplate3.setElementShapeType(Element.SHAPE_TYPE_CUBE)
+
+        elementtemplate4 = mesh.createElementtemplate()
+        elementtemplate4.setElementShapeType(Element.SHAPE_TYPE_WEDGE12)
+
+        # isEven = (self.elementsCountAcross % 2) == 0
+        # e1a = self.elementsCountRim
+        # e1b = e1a + 1
+        # e1z = self.elementsCountAcross - 1 - self.elementsCountRim
+        # e1y = e1z - 1
+        # e2a = self.elementsCountRim
+        # e2b = self.elementsCountRim + 1
+        # e2c = self.elementsCountRim + 2
+        # e2z = 2 * self.elementsCountUp - 1 - self.elementsCountRim
+        # e2y = e2z - 1
+        # e2x = e2z - 2
+        wedge= False
+        for e3 in range(arm_elementsCountAlong):
+            for e2 in range(2*arm_elementsCountMinor):
+                for e1 in range(2*arm_elementsCountMajor):
+                    eft1 = eft
+                    scalefactors = None
+
+                    if (e1>0 and e1<3) and (e2>0 and e2<3):
+                        wedge=False
+                        nids = [nodeId[e3][e2+1][e1], nodeId[e3][e2 + 1][e1+1], nodeId[e3 + 1][e2+1][e1],
+                                nodeId[e3 + 1][e2 + 1][e1+1],
+                                nodeId[e3][e2][e1], nodeId[e3][e2][e1 + 1],
+                                nodeId[e3 + 1][e2][e1], nodeId[e3 + 1][e2][e1 + 1]]
+
+                    elif (e1 == 0 or e1 == 3) and (e2>0 and e2<3):
+
+                        wedge = False
+                        nids = [nodeId[e3][e2 + 1][e1], nodeId[e3][e2 + 1][e1 + 1], nodeId[e3 + 1][e2 + 1][e1],
+                                nodeId[e3 + 1][e2 + 1][e1 + 1],
+                                nodeId[e3][e2][e1], nodeId[e3][e2][e1 + 1],
+                                nodeId[e3 + 1][e2][e1], nodeId[e3 + 1][e2][e1 + 1]]
+                        if e1 == 0:
+                            eft1 = tricubichermite.createEftNoCrossDerivatives()
+                            setEftScaleFactorIds(eft1, [1], [])
+                            scalefactors = [-1.0]
+                            remapEftNodeValueLabel(eft1, [1, 3, 5 ,7], Node.VALUE_LABEL_D_DS1,
+                                                   [(Node.VALUE_LABEL_D_DS3, [1])])
+                            remapEftNodeValueLabel(eft1, [1, 3, 5 ,7], Node.VALUE_LABEL_D_DS3,
+                                                   [(Node.VALUE_LABEL_D_DS1, [])])
+                        if e1 == 3:
+                            eft1 = tricubichermite.createEftNoCrossDerivatives()
+                            setEftScaleFactorIds(eft1, [1], [])
+                            scalefactors = [-1.0]
+                            remapEftNodeValueLabel(eft1, [2, 4, 6 ,8], Node.VALUE_LABEL_D_DS3,
+                                                   [(Node.VALUE_LABEL_D_DS1, [1])])
+                            remapEftNodeValueLabel(eft1, [2, 4, 6 ,8], Node.VALUE_LABEL_D_DS1,
+                                                   [(Node.VALUE_LABEL_D_DS3, [])])
+
+                    elif (e2 == 0 or e2 == 3) and (e1>0 and e1<3):
+
+                        wedge = False
+                        nids = [nodeId[e3][e2 + 1][e1], nodeId[e3][e2 + 1][e1 + 1], nodeId[e3 + 1][e2 + 1][e1],
+                                nodeId[e3 + 1][e2 + 1][e1 + 1],
+                                nodeId[e3][e2][e1], nodeId[e3][e2][e1 + 1],
+                                nodeId[e3 + 1][e2][e1], nodeId[e3 + 1][e2][e1 + 1]]
+                        if e2 == 3:
+                            eft1 = tricubichermite.createEftNoCrossDerivatives()
+                            setEftScaleFactorIds(eft1, [1], [])
+                            scalefactors = [-1.0]
+                            remapEftNodeValueLabel(eft1, [1, 2, 3, 4], Node.VALUE_LABEL_D_DS1,
+                                                   [(Node.VALUE_LABEL_D_DS1, [1])])
+                            remapEftNodeValueLabel(eft1, [1, 2, 3, 4], Node.VALUE_LABEL_D_DS3,
+                                                   [(Node.VALUE_LABEL_D_DS3, [1])])
+                    elif e1 == 0 and e2 == 0:
+                        wedge = True
+                        nids = [nodeId[e3][e2 + 1][e1], nodeId[e3][e2][e1], nodeId[e3 + 1][e2 + 1][e1], nodeId[e3 + 1][e2][e1],
+                                nodeId[e3][e2 + 1][e1 + 1], nodeId[e3][e2][e1 + 1], nodeId[e3 + 1][e2 + 1][e1 + 1], nodeId[e3 + 1][e2][e1 + 1]]
+                    elif e1 == 3 and e2 == 0:
+                        wedge = True
+                        nids = [nodeId[e3][e2 + 1][e1 - 1], nodeId[e3][e2 + 1][e1], nodeId[e3 + 1][e2 + 1][e1 - 1], nodeId[e3 + 1][e2 + 1][e1],
+                                nodeId[e3][e2 + 1][e1 + 1], nodeId[e3][e2][e1 + 1], nodeId[e3 + 1][e2 + 1][e1 + 1], nodeId[e3 + 1][e2][e1 + 1]]
+
+                    elif e1 == 0 and e2 == 3:
+                        wedge = True
+                        nids = [nodeId[e3][e2 - 1][e1], nodeId[e3][e2 - 1][e1 + 1], nodeId[e3 + 1][e2 - 1][e1], nodeId[e3 + 1][e2 - 1][e1 + 1],
+                                nodeId[e3][e2 - 1][e1 + 1], nodeId[e3][e2][e1 + 1], nodeId[e3 + 1][e2 - 1][e1 + 1], nodeId[e3 + 1][e2][e1 + 1]]
+                    elif e1 == 3 and e2 == 3:
+                        wedge = True
+                        nids = [nodeId[e3][e2 - 1][e1 - 1], nodeId[e3][e2 - 1][e1], nodeId[e3 + 1][e2 - 1][e1 - 1], nodeId[e3 + 1][e2 - 1][e1],
+                                nodeId[e3][e2 - 1][e1 - 1], nodeId[e3][e2][e1 - 1], nodeId[e3 + 1][e2 - 1][e1 - 1], nodeId[e3 + 1][e2][e1 - 1]]
+
+
+
+                    # if (e2 < e2b) or (e2 > e2y):
+                    #     if (e1 < e1b) or (e1 > e1y):
+                    #         continue  # no element due to triple point closure
+                    #     if (e2 < e2a) or (e2 > e2z):
+                    #         if self._type == ShieldRimDerivativeMode.SHIELD_RIM_DERIVATIVE_MODE_AROUND:
+                    #             if e2 < e2a:
+                    #                 nids = [self.nodeId[e3][e2 + 1][e1], self.nodeId[e3][e2 + 1][e1 + 1],
+                    #                         self.nodeId[e3 + 1][e2 + 1][e1], self.nodeId[e3 + 1][e2 + 1][e1 + 1],
+                    #                         self.nodeId[e3][e2][e1], self.nodeId[e3][e2][e1 + 1],
+                    #                         self.nodeId[e3 + 1][e2][e1], self.nodeId[e3 + 1][e2][e1 + 1]]
+                    #             elif e2 > e2z:
+                    #                 nids = [self.nodeId[e3][e2][e1 + 1], self.nodeId[e3][e2][e1],
+                    #                         self.nodeId[e3 + 1][e2][e1 + 1], self.nodeId[e3 + 1][e2][e1],
+                    #                         self.nodeId[e3][e2 + 1][e1 + 1], self.nodeId[e3][e2 + 1][e1],
+                    #                         self.nodeId[e3 + 1][e2 + 1][e1 + 1], self.nodeId[e3 + 1][e2 + 1][e1]]
+                    #     elif (e2 == e2a) or (e2 == e2z):
+                    #         # bottom and top row elements
+                    #         if self._type == ShieldRimDerivativeMode.SHIELD_RIM_DERIVATIVE_MODE_AROUND:
+                    #             if e2 == e2a:
+                    #                 eft1 = tricubichermite.createEftNoCrossDerivatives()
+                    #                 setEftScaleFactorIds(eft1, [1], [])
+                    #                 scalefactors = [-1.0]
+                    #                 remapEftNodeValueLabel(eft1, [1, 3, 5, 7], Node.VALUE_LABEL_D_DS1,
+                    #                                        [(Node.VALUE_LABEL_D_DS3, [1])])
+                    #                 remapEftNodeValueLabel(eft1, [1, 3, 5, 7], Node.VALUE_LABEL_D_DS3,
+                    #                                        [(Node.VALUE_LABEL_D_DS1, [])])
+
+                    if wedge:
+                        # elementtemplate4.defineField(coordinates, -1, eft)
+                        # element = mesh.createElement(elementIdentifier, elementtemplate4)
+                        pass
+                    else:
+                        if eft1 is not eft:
+                            elementtemplate3.defineField(coordinates, -1, eft1)
+                            element = mesh.createElement(elementIdentifier, elementtemplate3)
+                        else:
+                            element = mesh.createElement(elementIdentifier, elementtemplate2)
+                        result2 = element.setNodesByIdentifier(eft1, nids)
+                    if scalefactors:
+                        result3 = element.setScaleFactors(eft1, scalefactors)
+                    else:
+                        result3 = 7
+
+                    elementIdentifier += 1
+
+
+        # for meshGroup in meshGroups:
+        #     meshGroup.addElement(element)
+        for n2 in range(2*arm_elementsCountMinor + 1):
+            for n1 in range(2*arm_elementsCountMajor + 1):
+                nodeId[1][n2][n1] = nodeId[0][n2][n1]
+
+        nodeId[0][0][1:3] = [80,81,82]
+        nodeId[0][1][0:5] = [86, 87, 88, 89, 90]
+        nodeId[0][2][0:5] = [93, 94, 95, 96, 97]
+        nodeId[0][3][0:5] = [100, 101, 102, 103, 104]
+        nodeId[0][4][1:3] = [108, 109, 110]
+
+        wedge = False
+        for e3 in range(arm_elementsCountAlong):
+            for e2 in range(2 * arm_elementsCountMinor):
+                for e1 in range(2 * arm_elementsCountMajor):
+                    eft1 = eft
+                    scalefactors = None
+
+                    if (e1 > 0 and e1 < 3) and (e2 > 0 and e2 < 3):
+                        wedge = False
+                        nids = [nodeId[e3][e2 + 1][e1], nodeId[e3][e2 + 1][e1 + 1],
+                                nodeId[e3 + 1][e2 + 1][e1],
+                                nodeId[e3 + 1][e2 + 1][e1 + 1],
+                                nodeId[e3][e2][e1], nodeId[e3][e2][e1 + 1],
+                                nodeId[e3 + 1][e2][e1], nodeId[e3 + 1][e2][e1 + 1]]
+                        eft1 = tricubichermite.createEftNoCrossDerivatives()
+                        setEftScaleFactorIds(eft1, [1], [])
+                        scalefactors = [-1.0]
+                        remapEftNodeValueLabel(eft1, [1, 2, 5, 6], Node.VALUE_LABEL_D_DS2,
+                                               [(Node.VALUE_LABEL_D_DS3, [])])
+                        remapEftNodeValueLabel(eft1, [1, 2, 5, 6], Node.VALUE_LABEL_D_DS3,
+                                               [(Node.VALUE_LABEL_D_DS2, [1])])
+
+                    elif (e1 == 0 or e1 == 3) and (e2 > 0 and e2 < 3):
+
+                        wedge = False
+                        nids = [nodeId[e3][e2 + 1][e1], nodeId[e3][e2 + 1][e1 + 1],
+                                nodeId[e3 + 1][e2 + 1][e1],
+                                nodeId[e3 + 1][e2 + 1][e1 + 1],
+                                nodeId[e3][e2][e1], nodeId[e3][e2][e1 + 1],
+                                nodeId[e3 + 1][e2][e1], nodeId[e3 + 1][e2][e1 + 1]]
+                        if e1 == 0:
+                            eft1 = tricubichermite.createEftNoCrossDerivatives()
+                            setEftScaleFactorIds(eft1, [1], [])
+                            scalefactors = [-1.0]
+                            remapEftNodeValueLabel(eft1, [3, 7], Node.VALUE_LABEL_D_DS1,
+                                                   [(Node.VALUE_LABEL_D_DS3, [1])])
+                            remapEftNodeValueLabel(eft1, [3, 7], Node.VALUE_LABEL_D_DS3,
+                                                   [(Node.VALUE_LABEL_D_DS1, [])])
+
+                            remapEftNodeValueLabel(eft1, [1, 2, 5, 6], Node.VALUE_LABEL_D_DS3,
+                                                   [(Node.VALUE_LABEL_D_DS2, [1])])
+                            remapEftNodeValueLabel(eft1, [1, 2, 5, 6], Node.VALUE_LABEL_D_DS2,
+                                                   [(Node.VALUE_LABEL_D_DS1, [])])
+                        if e1 == 3:
+                            eft1 = tricubichermite.createEftNoCrossDerivatives()
+                            setEftScaleFactorIds(eft1, [1], [])
+                            scalefactors = [-1.0]
+                            remapEftNodeValueLabel(eft1, [4, 8], Node.VALUE_LABEL_D_DS3,
+                                                   [(Node.VALUE_LABEL_D_DS1, [1])])
+                            remapEftNodeValueLabel(eft1, [4, 8], Node.VALUE_LABEL_D_DS1,
+                                                   [(Node.VALUE_LABEL_D_DS3, [])])
+
+                            remapEftNodeValueLabel(eft1, [1, 2, 5, 6], Node.VALUE_LABEL_D_DS3,
+                                                   [(Node.VALUE_LABEL_D_DS2, [1])])
+                            remapEftNodeValueLabel(eft1, [1, 2, 5, 6], Node.VALUE_LABEL_D_DS2,
+                                                   [(Node.VALUE_LABEL_D_DS1, [1])])
+
+
+                    elif (e2 == 0 or e2 == 3) and (e1 > 0 and e1 < 3):
+
+                        wedge = False
+                        nids = [nodeId[e3][e2 + 1][e1], nodeId[e3][e2 + 1][e1 + 1],
+                                nodeId[e3 + 1][e2 + 1][e1],
+                                nodeId[e3 + 1][e2 + 1][e1 + 1],
+                                nodeId[e3][e2][e1], nodeId[e3][e2][e1 + 1],
+                                nodeId[e3 + 1][e2][e1], nodeId[e3 + 1][e2][e1 + 1]]
+
+                        if e2 == 0:
+                            eft1 = tricubichermite.createEftNoCrossDerivatives()
+                            setEftScaleFactorIds(eft1, [1], [])
+                            scalefactors = [-1.0]
+
+                            remapEftNodeValueLabel(eft1, [1, 2], Node.VALUE_LABEL_D_DS3,
+                                                   [(Node.VALUE_LABEL_D_DS2, [1])])
+                            remapEftNodeValueLabel(eft1, [1, 2], Node.VALUE_LABEL_D_DS2,
+                                                   [(Node.VALUE_LABEL_D_DS3, [])])
+
+                        if e2 == 3:
+                            eft1 = tricubichermite.createEftNoCrossDerivatives()
+                            setEftScaleFactorIds(eft1, [1], [])
+                            scalefactors = [-1.0]
+                            remapEftNodeValueLabel(eft1, [3, 4], Node.VALUE_LABEL_D_DS1,
+                                                   [(Node.VALUE_LABEL_D_DS1, [1])])
+                            remapEftNodeValueLabel(eft1, [3, 4], Node.VALUE_LABEL_D_DS3,
+                                                   [(Node.VALUE_LABEL_D_DS3, [1])])
+
+                            remapEftNodeValueLabel(eft1, [1, 2, 5, 6], Node.VALUE_LABEL_D_DS3,
+                                                   [(Node.VALUE_LABEL_D_DS2, [1])])
+                            remapEftNodeValueLabel(eft1, [1, 2, 5, 6], Node.VALUE_LABEL_D_DS2,
+                                                   [(Node.VALUE_LABEL_D_DS2, [1])])
+
+                    elif e1 == 0 and e2 == 0:
+                        wedge = True
+                        nids = [nodeId[e3][e2 + 1][e1], nodeId[e3][e2][e1], nodeId[e3 + 1][e2 + 1][e1],
+                                nodeId[e3 + 1][e2][e1],
+                                nodeId[e3][e2 + 1][e1 + 1], nodeId[e3][e2][e1 + 1],
+                                nodeId[e3 + 1][e2 + 1][e1 + 1], nodeId[e3 + 1][e2][e1 + 1]]
+                    elif e1 == 3 and e2 == 0:
+                        wedge = True
+                        nids = [nodeId[e3][e2 + 1][e1 - 1], nodeId[e3][e2 + 1][e1],
+                                nodeId[e3 + 1][e2 + 1][e1 - 1], nodeId[e3 + 1][e2 + 1][e1],
+                                nodeId[e3][e2 + 1][e1 + 1], nodeId[e3][e2][e1 + 1],
+                                nodeId[e3 + 1][e2 + 1][e1 + 1], nodeId[e3 + 1][e2][e1 + 1]]
+
+                    elif e1 == 0 and e2 == 3:
+                        wedge = True
+                        nids = [nodeId[e3][e2 - 1][e1], nodeId[e3][e2 - 1][e1 + 1],
+                                nodeId[e3 + 1][e2 - 1][e1], nodeId[e3 + 1][e2 - 1][e1 + 1],
+                                nodeId[e3][e2 - 1][e1 + 1], nodeId[e3][e2][e1 + 1],
+                                nodeId[e3 + 1][e2 - 1][e1 + 1], nodeId[e3 + 1][e2][e1 + 1]]
+                    elif e1 == 3 and e2 == 3:
+                        wedge = True
+                        nids = [nodeId[e3][e2 - 1][e1 - 1], nodeId[e3][e2 - 1][e1],
+                                nodeId[e3 + 1][e2 - 1][e1 - 1], nodeId[e3 + 1][e2 - 1][e1],
+                                nodeId[e3][e2 - 1][e1 - 1], nodeId[e3][e2][e1 - 1],
+                                nodeId[e3 + 1][e2 - 1][e1 - 1], nodeId[e3 + 1][e2][e1 - 1]]
+                    if wedge:
+                        # elementtemplate4.defineField(coordinates, -1, eft)
+                        # element = mesh.createElement(elementIdentifier, elementtemplate4)
+                        pass
+                    else:
+                        if eft1 is not eft:
+                            elementtemplate3.defineField(coordinates, -1, eft1)
+                            element = mesh.createElement(elementIdentifier, elementtemplate3)
+                        else:
+                            element = mesh.createElement(elementIdentifier, elementtemplate2)
+                        result2 = element.setNodesByIdentifier(eft1, nids)
+                    if scalefactors:
+                        result3 = element.setScaleFactors(eft1, scalefactors)
+                    else:
+                        result3 = 7
+
+                    elementIdentifier += 1
+
+
+
+
+
+
+
+        a = 1
 
         return annotationGroups
 
